@@ -167,10 +167,17 @@ def main():
         "PokeMMO PS5: Wine, WGL/Zink and RADV in one PS5 app. The official client is not included.\n\n"
         "Independently download and extract the portable client from the official page:\n"
         f"  {OFFICIAL_PORTABLE_URL}\n\n"
-        "Then install it, with the console on, jailbroken, its FTP server running and ShadowMount loaded:\n\n"
-        "  python3 install.py --host <the console's address> --client \"<your extracted PokeMMO-Client folder>\"\n\n"
-        "The guide, the source of everything here and the licences: see the project page.\n"
-        f"Licence notices of what the app contains: title/{TITLE_ID}/licenses/.\n")
+        "Install manually over FTP with the title closed; use binary transfers and disable SELF conversion.\n"
+        "Copy title/PPSA99221/ to /data/homebrew/PPSA99221/.\n"
+        "Copy runtime/pokemmo/wine/ and ca-certificates.crt to /data/pokemmo/.\n"
+        "Copy prefix/*.reg to /data/pokemmo/prefix/ and the contents of prefix/drive_c/\n"
+        "to /data/pokemmo/prefix/dosdevices/c:/ (not to a drive_c directory).\n"
+        "Copy the complete Windows client to /data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/,\n"
+        "then put both zink/*.dll files beside PokeMMO.exe. Stage your own ROMs in its roms/ folder.\n"
+        "Register the title with ShadowMount and launch PokeMMO PS5.\n\n"
+        "Full manual FTP instructions and known limitations: README.md in this bundle,\n"
+        "or https://github.com/bizkut/ps5-pokemmo#install.\n"
+        f"Licence notices: title/{TITLE_ID}/licenses/. Source index: sources/README.md.\n")
     lines = []
     for path in sorted(p for p in bundle.rglob('*') if p.is_file() and p.name != 'MANIFEST.sha256'):
         lines.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(bundle).as_posix()}')
