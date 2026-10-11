@@ -8,7 +8,7 @@ This project does **not** include the PokeMMO client, ROMs, credentials, or acco
 
 GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** downloads are source only. They are not PS5 install packages and do not contain the title, Wine runtime, or installer-ready files.
 
-Download **[`PokeMMO-PS5.zip` from the v0.1.0 prerelease](https://github.com/bizkut/ps5-pokemmo/releases/tag/v0.1.0)**. Use this installable asset, not either **Source code** archive. Installation is by manual FTP as described below; no Python installer is required.
+Download **[`PokeMMO-PS5.zip` from the v0.1.1 prerelease](https://github.com/bizkut/ps5-pokemmo/releases/tag/v0.1.1)**. Use this installable asset, not either **Source code** archive. Installation is by manual FTP as described below; no Python installer is required.
 
 The official PokeMMO client is never bundled in either kind of download.
 
