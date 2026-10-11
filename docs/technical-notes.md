@@ -44,7 +44,7 @@ Clicking the filesystem Browse button on the earlier build terminated the client
 
 ## Graphics path
 
-PokeMMO uses LWJGL/OpenGL. Linking the separate native `ps5-opengl` fullscreen EGL stack would create a second presentation and allocator owner inside the Wine/Vulkan title. The selected path instead preserves one display backend:
+`PokeMMO.exe` runs through Wine 11.19 inside the single PS5 title, without streaming or a Linux guest. PokeMMO uses LWJGL/OpenGL. Linking the separate native `ps5-opengl` fullscreen EGL stack would create a second presentation and allocator owner inside the Wine/Vulkan title. The selected path instead preserves one display backend:
 
 ```text
 PokeMMO / LWJGL WGL
@@ -56,7 +56,7 @@ PokeMMO / LWJGL WGL
   -> VideoOut
 ```
 
-`tools/wine-ps5/build-zink.sh` builds only the Windows x86-64 WGL frontend plus Zink from the pinned PS5 Mesa source. zlib is statically linked. The script rejects an extra DLL, Windows Vulkan loader or ICD in its install closure.
+`WINEDLLOVERRIDES=opengl32=n,b;vulkan-1=b` selects the application-local Mesa WGL DLL and Wine's Vulkan loader. `tools/wine-ps5/build-zink.sh` builds only the Windows x86-64 WGL frontend plus Zink from the pinned PS5 Mesa source. zlib is statically linked. The script rejects an extra DLL, Windows Vulkan loader or ICD in its install closure.
 
 A Wine-internal OpenGL root-context attempt logs a non-fatal failure before the application-local Mesa DLLs load. PokeMMO subsequently creates its WGL context successfully and reports the Zink renderer above.
 
@@ -88,17 +88,47 @@ Host verification passed the native input-mapping regression (including right-st
 
 ## ROM setup without Browse
 
-The locally supplied `pokemmo-port/README.md` (ROM section) and `pokemmo/main_config.properties` set relative `client.roms.*` paths explicitly. The same five keys exist in this Windows client's generated configuration. See [the setup table](../README.md#roms-without-the-file-browser) for their exact mapping.
+For client revision `32920`, the observed console run automatically discovered supported uncompressed ROMs placed in the client's `roms/` directory. The title must be closed while files or configuration are changed. The filesystem Browse button is not a substitute: it crashed the client during qualification.
 
-PokeMMO starts with `C:\Games\PokeMMO` as its working directory. Thus a value such as `roms/pokemon_black.nds` refers to the installed game's own `roms/` directory. Both PS5 client stagers already copy that directory; no Linux launcher, Java replacement, ROM conversion or native file picker is involved.
+The locally supplied `pokemmo-port/README.md` (ROM section) and `pokemmo/main_config.properties` use explicit relative `client.roms.*` paths. The same keys exist in this Windows client's generated configuration and remain available as an optional expert configuration:
 
-A host smoke invoked the actual launch-config updater on a configuration populated with all five reference ROM paths and verified that they survived unchanged alongside the 1080p settings. Initially the supplied ROM folders were empty. The later `pokemmo-input-correction-live/klog-20261011-142554.log` records six candidates and successful loads of White (`IRAO`), Emerald (`BPEE`), FireRed (`BPRE`), SoulSilver (`IPGE`) and Platinum (`CPUE`). FTP inspection confirmed the supplied files were in the game's `roms/` directory and all six `client.roms.*` properties were still empty. This establishes automatic directory discovery and those loads for revision `32920`; it does not qualify every ROM variant, archive handling or gameplay. The reference does not define `client.roms.nds4`.
+| ROM | Property | Example relative path |
+|---|---|---|
+| Black **or White**, version 1 (required) | `client.roms.nds` | `roms/pokemon_black.nds` |
+| FireRed | `client.roms.fr` | `roms/pokemon_firered.gba` |
+| Emerald | `client.roms.em` | `roms/pokemon_emerald.gba` |
+| Platinum | `client.roms.nds2` | `roms/pokemon_platinum.nds` |
+| HeartGold **or SoulSilver** | `client.roms.nds3` | `roms/pokemon_heartgold.nds` |
+
+Substitute the actual filenames when using White or SoulSilver. The reference does not define a mapping for `client.roms.nds4`; do not invent one.
+
+PokeMMO starts with `C:\Games\PokeMMO` as its working directory, so a value such as `roms/pokemon_black.nds` resolves inside the installed game's own `roms/` directory. No Linux launcher, Java replacement, ROM conversion or native file picker is involved. On the PS5, the relevant locations are:
+
+- ROMs: `/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/roms/`
+- Configuration: `/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/config/main.properties`
+
+Set only properties for files that are actually present. Configure the portable client's `config/main.properties` before staging it, or edit the installed file over FTP while the title is closed. Do not replace the full Windows-client configuration with the handheld port's file: it selects handheld-specific graphics, themes and mods. The PS5 launch-config updater preserves explicit ROM entries while enforcing the five launch-owned graphics settings described under [the 1080p policy](#black-screen-root-cause-and-1080p-policy).
+
+A host smoke invoked the actual launch-config updater on a configuration populated with all five reference ROM paths and verified that they survived unchanged alongside the 1080p settings. Initially the supplied ROM folders were empty. The later `pokemmo-input-correction-live/klog-20261011-142554.log` records six candidates and successful loads of White (`IRAO`), Emerald (`BPEE`), FireRed (`BPRE`), SoulSilver (`IPGE`) and Platinum (`CPUE`). FTP inspection confirmed the supplied files were in the game's `roms/` directory and all six `client.roms.*` properties were still empty. This establishes automatic directory discovery and those loads for revision `32920`; it does not qualify every ROM variant, archive handling or gameplay.
 
 ## Reproducible build
 
-The complete console build includes the ordered RADV mailbox/cursor overlays and requires the resulting project archive at title link time. Overlays are removed in reverse order afterward. Wine's regenerated patch reproduces its source tree, excluding only Git and local indexing metadata.
+Third-party source revisions are pinned in `dependencies.json`; generated sources and client data remain under ignored directories. `PS5_Mesa` pins the Windows WGL/Zink source, `PS5_Mesa_RADV` pins the separate Mesa revision consumed by the PS5 Vulkan RADV archive, and `PS5_PayloadSDK` pins the SDK revision. The commit IDs and isolated host-package checksums in `dependencies.json` are the authoritative versions.
 
-The verified macOS invocation uses LLVM 23 host tools matching the installed SPIR-V translator, while selecting the existing LLVM 19 target builtins for the PS5 title:
+The verified macOS host used Python 3, Git, LLVM/Clang and LLD 23, matching LLVM 23 SPIR-V tools, llvm-mingw, CMake, Meson, Ninja, `pkg-config`, `glslangValidator`, `bsdtar`, modern Bison/Flex/GNU Make, and LLVM 19 target builtins selected through `PS5_CLANG`. Bootstrap and build from the repository root:
+
+```sh
+python3 tools/bootstrap.py
+cp .env.example .env                 # set POKEMMO_CLIENT
+bash tools/wine-ps5/bootstrap-wine.sh
+bash tools/wine-ps5/build-zink.sh
+bash tools/wine-ps5/build-console.sh --no-deploy
+python3 tools/wine-ps5/stage-game.py --dry-run
+```
+
+`bootstrap-wine.sh` prepares Wine host tools and its PS5 cross tree. `build-zink.sh` emits exactly `opengl32.dll` and `libgallium_wgl.dll`; it does not stage a Windows Vulkan loader or ICD. `build-console.sh` builds the ordered RADV cursor/mailbox patch stack before linking the title, WGL/Zink and TLS, and removes the overlays in reverse order afterward. The resulting RADV project archive is required at title link time. Wine's regenerated patch reproduces its source tree, excluding only Git and local indexing metadata.
+
+The verified macOS console-build invocation keeps LLVM 19 include/library flags out of the LLVM 23 Mesa host-tool build while selecting LLVM 19 only for the PS5 title's available x86-64 builtins:
 
 ```sh
 env -u LDFLAGS -u CPPFLAGS \
@@ -111,14 +141,60 @@ env -u LDFLAGS -u CPPFLAGS \
   bash tools/wine-ps5/build-console.sh --no-deploy
 ```
 
-The repeated generated LLVM shim was exercised without rewriting itself. Ambient LLVM 19 include/library flags must not contaminate the LLVM 23 Mesa host-tool build. The native input/OSK test translation units still report unused-static-helper warnings; their behavioral checks pass.
+The repeated generated LLVM shim was exercised without rewriting itself. The native input/OSK test translation units still report unused-static-helper warnings; their behavioral checks pass.
 
+## Bundle export
+
+After building and qualifying the title and runtime on a console, close the title so the prefix registry is complete, then create the installable bundle:
+
+```sh
+python3 tools/make-bundle.py
+```
+
+`tools/make-bundle.py` reads the tested `/data/pokemmo` Wine runtime and prefix from the console, sanitizes credentials, temporary contents, owner labels and host paths, and combines them with `app/dist/PPSA99221` and the two WGL/Zink DLLs. It writes `build/release/PokeMMO-PS5.zip`, copies the optional FTP helper as `install.py`, and generates the manifest. Component notices must already be staged with the title; additional source archives and root licence notices must be assembled separately in the bundle staging directory before repacking with `--no-fetch`. The exporter includes that staged material but does not generate it. The portable bundle calls the console C drive `prefix/drive_c`; deployment must map its contents back to `prefix/dosdevices/c:`.
+
+The current local `build/release/PokeMMO-PS5.zip` is 385.5 MiB. It has not been uploaded to GitHub and is not a public release asset.
+
+The bundle excludes the official PokeMMO client, ROMs, installed `Games` content and private session data. Release inputs must also exclude `PokeMMO.exe`, `PokeMMO-Debug.exe`, native Linux/macOS client binaries, older client JARs, downloaded client archives, private prefixes, logs and credentials. The official Windows portable client must always be downloaded independently from [PokeMMO](https://pokemmo.com/en/downloads/portable/).
+
+### Optional automated FTP helper
+
+The [user installation guide](../README.md#install) documents manual FTP installation. For maintainers who deliberately choose the bundled helper, `install.py` automates the same path mapping, selects binary FTP transfers, disables supported FTP-server SELF conversion, skips matching files, and excludes the portable client's top-level `bin/` directory and `PokeMMO.sh`:
+
+```sh
+python3 install.py --host YOUR_PS5_IP --client '/path/to/PokeMMO-Client'
+```
+
+After updating the portable client on a computer, the helper can restage only that client:
+
+```sh
+python3 install.py --host YOUR_PS5_IP --client '/path/to/PokeMMO-Client' --skip-app
+```
+
+Its local transfer record contains file size and modification-time metadata, not credentials. If the initial client copy was made outside the helper, `--since "YYYY-MM-DD HH:MM"` can be supplied once so same-size files changed after that copy are resent.
+
+## Automated source-release workflow
+
+The hosted `.github/workflows/release.yml` runs only for a newly pushed tag. It runs the offline packaging regressions, rejects recognized official PokeMMO client content in the checkout, and creates a GitHub release with generated notes. It does **not** build or upload the PS5 title, Wine runtime, installer-ready bundle or official client. Its only downloads are GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives, which cannot be installed on a PS5.
+
+To publish a prepared source revision, create and push a new tag containing that workflow:
+
+```sh
+git add -A
+git commit -m "Prepare PokeMMO PS5 public source"
+git push -u origin main
+git tag -a v0.1.0 -m "PokeMMO PS5 v0.1.0"
+git push origin v0.1.0
+```
+
+Use a new version tag for each release. A `main` push alone does not trigger the workflow, and there is no manual **Run workflow** button. Follow **Source release** in the repository's [Actions tab](https://github.com/bizkut/ps5-pokemmo/actions); after its checks pass, the source release appears under [Releases](https://github.com/bizkut/ps5-pokemmo/releases). Reruns preserve an existing release rather than replacing its contents. An installable `PokeMMO-PS5.zip`, if one is ever attached, is a separate manually produced and console-qualified asset.
 
 ## One-process Wine constraints
 
 - The PS5 title cannot start normal Wine helper processes; the Wine server runs on a thread.
 - The title has 16 KiB host pages. `ps5_mman.c` presents Windows-compatible 4 KiB commit/protection semantics and direct-memory executable mappings.
 - Unix libraries (`win32u`, `winevulkan`, networking, TLS, XInput and audio) are linked into `eboot.bin` and selected from a generated table rather than `dlopen`.
+- Native title bridges provide files, DNS/IPv4, TLS entropy, audio, XInput, keyboard/mouse and the on-screen keyboard.
 - The title supplies an emulated working directory because title `chdir`/relative-path behavior is restricted. PokeMMO is started with its install directory as cwd.
 - DNS is IPv4-backed. PokeMMO's observed Main Feed request succeeded, but broader network behavior is not qualified.
 - Client self-update may require a second process and is not claimed. Update the portable client on the computer and restage it.
@@ -133,10 +209,12 @@ The permanent fix is in `app/ps5/tools/link-title.sh`: both the LLVM link and PS
 
 ```text
 /data/homebrew/PPSA99221/                         native title
+/data/pokemmo/ca-certificates.crt                 TLS trust bundle
 /data/pokemmo/wine/                              Wine PE modules and NLS data
 /data/pokemmo/prefix/                            registry and drive C
 /data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/
   PokeMMO.exe
+  PokeMMO-Debug.exe
   opengl32.dll
   libgallium_wgl.dll
   data/
@@ -145,7 +223,20 @@ The permanent fix is in `app/ps5/tools/link-title.sh`: both the LLVM link and PS
   roms/
 ```
 
-The prefix user is `pokemmo`. Release sanitization removes credentials, temporary contents, owner labels and host-only paths before packaging.
+The prefix user is `pokemmo`. Release sanitization removes credentials, temporary contents, owner labels and host-only paths before packaging. In an extracted bundle, the contents of `runtime/pokemmo/prefix/drive_c/` must be copied to the console's `/data/pokemmo/prefix/dosdevices/c:/`; `drive_c` is not the deployed directory name.
+
+Advanced runtime settings are `NAME=value` lines in `/data/pokemmo/launch.txt`. Diagnostic variables use the `POKEMMOPS5_` prefix. Delete `launch.txt` to restore defaults.
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `app/` | PS5 title, Wine host integration, controller/audio/OSK bridges, and diagnostic probe |
+| `runtime/wine-ps5/` | Pinned Wine patch, PS5 memory layer, and TLS compatibility |
+| `runtime/radv-ps5/` | PS5 RADV presentation patch inherited from the template |
+| `tools/wine-ps5/` | Wine, Zink, TLS, staging, console, and input tools |
+| `ARTWORK.md` | Artwork provenance, redistribution confirmation, and attribution/licence limits |
+| `docs/technical-notes.md` | Architecture, qualification receipts, limitations, and diagnosed failures |
 
 ## Reference boundary
 
