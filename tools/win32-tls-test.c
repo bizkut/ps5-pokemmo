@@ -29,7 +29,7 @@ static int request(HINTERNET session, const WCHAR *host, int valid)
 
 int main(void)
 {
-    HINTERNET session = WinHttpOpen(L"WoWPS5 TLS test", WINHTTP_ACCESS_TYPE_NO_PROXY,
+    HINTERNET session = WinHttpOpen(L"PokeMMO PS5 TLS test", WINHTTP_ACCESS_TYPE_NO_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) { printf("FAIL: WinHttpOpen error %lu\n", GetLastError()); return 1; }
     WinHttpSetTimeouts(session, 10000, 10000, 15000, 15000);

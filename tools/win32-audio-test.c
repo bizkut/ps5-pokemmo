@@ -329,7 +329,7 @@ static int stress(double run_seconds)
     IMMDeviceEnumerator *enumerator = NULL;
     HANDLE threads[4];
 
-    printf("WoWPS5 Win32 audio stress, %.0f s\n", run_seconds);
+    printf("PokeMMO PS5 Win32 audio stress, %.0f s\n", run_seconds);
     if (FAILED(step("CoInitializeEx(COINIT_MULTITHREADED)", CoInitializeEx(NULL, COINIT_MULTITHREADED)))) return 1;
     if (FAILED(step("CoCreateInstance(MMDeviceEnumerator)", CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER,
             &IID_IMMDeviceEnumerator, (void **)&enumerator)))) return 1;
@@ -342,7 +342,7 @@ static int stress(double run_seconds)
     check("stress: streams were opened and no call failed", stress_streams > 0 && !stress_failures);
     IMMDevice_Release(stress_device);
     IMMDeviceEnumerator_Release(enumerator);
-    printf(failures ? "WoWPS5 Win32 audio stress FAIL (%d)\n" : "WoWPS5 Win32 audio stress PASS\n", failures);
+    printf(failures ? "PokeMMO PS5 Win32 audio stress FAIL (%d)\n" : "PokeMMO PS5 Win32 audio stress PASS\n", failures);
     fflush(stdout);
     return failures;
 }
@@ -433,7 +433,7 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "exit")) return exit_while_playing();   /* no watchdog: a hang is the finding */
     CloseHandle(CreateThread(NULL, 0, watchdog, NULL, 0, NULL));
-    printf("WoWPS5 Win32 audio test\n");
+    printf("PokeMMO PS5 Win32 audio test\n");
     if (FAILED(step("CoInitializeEx(COINIT_MULTITHREADED)", CoInitializeEx(NULL, COINIT_MULTITHREADED)))) goto done;
     if (FAILED(step("CoCreateInstance(MMDeviceEnumerator)", CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER,
             &IID_IMMDeviceEnumerator, (void **)&enumerator)))) goto done;
@@ -499,7 +499,7 @@ done:
     if (client) IAudioClient_Release(client);
     if (device) IMMDevice_Release(device);
     if (enumerator) IMMDeviceEnumerator_Release(enumerator);
-    printf(failures ? "WoWPS5 Win32 audio test FAIL (%d)\n" : "WoWPS5 Win32 audio test PASS\n", failures);
+    printf(failures ? "PokeMMO PS5 Win32 audio test FAIL (%d)\n" : "PokeMMO PS5 Win32 audio test PASS\n", failures);
     fflush(stdout);
     return failures;
 }

@@ -25,10 +25,10 @@ static void pump(void) { MSG message; while(PeekMessageA(&message, NULL, 0, 0, P
 
 int main(int argc, char** argv) {
     const DWORD run = (argc > 1 ? (DWORD)atoi(argv[1]) : 5) * 1000;
-    WNDCLASSA class = { .lpfnWndProc = procedure, .hInstance = GetModuleHandleA(NULL), .lpszClassName = "WoWPS5D3D12" };
+    WNDCLASSA class = { .lpfnWndProc = procedure, .hInstance = GetModuleHandleA(NULL), .lpszClassName = "PokeMMOPS5D3D12" };
     RegisterClassA(&class);
     const int width = GetSystemMetrics(SM_CXSCREEN), height = GetSystemMetrics(SM_CYSCREEN);
-    HWND window = CreateWindowExA(0, class.lpszClassName, "WoWPS5 D3D12", WS_POPUP | WS_VISIBLE, 0, 0, width, height, NULL, NULL, class.hInstance, NULL);
+    HWND window = CreateWindowExA(0, class.lpszClassName, "PokeMMO PS5 D3D12", WS_POPUP | WS_VISIBLE, 0, 0, width, height, NULL, NULL, class.hInstance, NULL);
     printf("info display %d x %d\n", width, height);
     if(!check(window ? S_OK : HRESULT_FROM_WIN32(GetLastError()), "a window the size of the display")) goto done;
     pump();
@@ -104,6 +104,6 @@ int main(int argc, char** argv) {
     printf("info %u frames in %lu ms (%.1f per second)\n", frames, elapsed, elapsed ? frames * 1000.0 / elapsed : 0.0);
     check(FAILED(result) ? result : frames > 10 ? S_OK : E_FAIL, "frames presented");
 done:
-    printf(failures ? "WoWPS5 Win32 d3d12 present test FAIL\n" : "WoWPS5 Win32 d3d12 present test PASS\n");
+    printf(failures ? "PokeMMO PS5 Win32 d3d12 present test FAIL\n" : "PokeMMO PS5 Win32 d3d12 present test PASS\n");
     return failures;
 }

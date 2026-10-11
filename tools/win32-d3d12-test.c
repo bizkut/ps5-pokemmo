@@ -96,6 +96,6 @@ int main(void) {
     if(pixels) printf("info first pixel %u %u %u %u\n", pixels[footprint.Offset], pixels[footprint.Offset + 1], pixels[footprint.Offset + 2], pixels[footprint.Offset + 3]);
     check(SUCCEEDED(result) && right == size * size ? S_OK : E_FAIL, "the render target the GPU cleared reads back correct");
 done:
-    printf(failures ? "WoWPS5 Win32 d3d12 test FAIL\n" : "WoWPS5 Win32 d3d12 test PASS\n");
+    printf(failures ? "PokeMMO PS5 Win32 d3d12 test FAIL\n" : "PokeMMO PS5 Win32 d3d12 test PASS\n");
     return failures;
 }

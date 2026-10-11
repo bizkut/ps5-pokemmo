@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) 2026 Brett (BeLikeBrett) and the WoWPS5 contributors
+Copyright (c) 2026 the PokeMMO PS5 project contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,13 +23,24 @@ SOFTWARE.
 
 ---
 
-This licence covers the project's own code, scripts and documentation. Parts
-that derive from other projects keep those projects' licences:
+This licence covers the project's own code, scripts and documentation only.
+Parts that derive from other projects keep those projects' licences:
 
 - runtime/wine-ps5/wine-ps5.patch and the files copied into Wine's tree are
   derived from Wine and are LGPL-2.1-or-later.
 - runtime/radv-ps5/*.patch are derived from Mesa and are MIT, as Mesa's files are.
 - app/external/ holds third-party headers under their own licences.
+- The linked PS5 platform layer is GPL-3.0-or-later; resulting distributed title
+  binaries are governed by that licence.
 
-The game, its artwork and its trademarks belong to Blizzard Entertainment and
-are not covered by this licence or included in this repository's code.
+An unpacked installable bundle carries its component notices under
+`title/PPSA99221/licenses/`.
+
+This repository includes the menu, icon and cursor artwork described in
+`ARTWORK.md`. The maintainer has confirmed permission to redistribute those
+retained assets, but their original artists and open-content licences are not
+documented. They are not covered by this MIT licence.
+
+The official PokeMMO client and Pokémon ROMs are not included or covered.
+PokeMMO, Pokémon and other third-party trademarks remain the property of their
+respective owners.

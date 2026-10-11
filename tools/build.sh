@@ -11,7 +11,8 @@ bash "$PS5_VULKAN_DIR/tools/build-radv.sh" release
 bash "$PS5_VULKAN_DIR/tools/rebuild-libc.sh"
 mkdir -p "$PS5_VULKAN_DIR/build/host"
 cp "$PS5_VULKAN_DIR/build/runtime-shim/ps5-native-tool" "$PS5_VULKAN_DIR/build/host/ps5-native-tool"
-bash "$root/app/ps5/tools/compile-shaders.sh" wowps5probe
+bash "$root/tools/wine-ps5/build-zink.sh"
+bash "$root/app/ps5/tools/compile-shaders.sh" pokemmops5probe
 bash "$root/app/ps5/tools/build.sh"
 bash "$root/tools/build-pe-smoke.sh"
-cp "$root/build/windows/pe-smoke.exe" "$root/app/dist/PPSA99220/pe-smoke.exe"
+cp "$root/build/windows/pe-smoke.exe" "$root/app/dist/PPSA99221/pe-smoke.exe"

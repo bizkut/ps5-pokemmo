@@ -4,11 +4,16 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdatomic.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include "cursor_arrow.h"
+#ifndef POKEMMOPS5_INPUT_TEST
+#include <ps5platform/kernel.h>
+#endif
 
 struct touch { uint16_t x, y; uint8_t id, reserved[3]; };
 struct pad_data {
@@ -35,22 +40,173 @@ _Static_assert(sizeof(struct keyboard_data) == 96 && offsetof(struct keyboard_da
 _Static_assert(sizeof(struct mouse_data) == 40 && offsetof(struct mouse_data, x) == 16, "mouse ABI");
 _Static_assert(sizeof(struct gamepad_state) == 16, "XInput ABI");
 
-extern int wowps5_input_queue(unsigned, unsigned, unsigned, int, int);
+extern int pokemmops5_input_queue(unsigned, unsigned, unsigned, int, int);
 static pthread_mutex_t devices_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct gamepad_state gamepad;
 static int pad_connected, pad_enabled = 1;
 static uint8_t keyboard_held[8][256], key_held[256];
-static uint32_t mouse_held[9], buttons_held;
+enum { MOUSE_PAD_SOURCE = 8, MOUSE_TAP_SOURCE, MOUSE_SOURCE_COUNT };
+static uint32_t mouse_held[MOUSE_SOURCE_COUNT], buttons_held;
 static int touch_active, touch_x, touch_y, touch_click;
 static uint8_t touch_id;
 static unsigned repeat_key;
 static uint64_t repeat_at;
 static uint64_t pad_records, touch_moves, keyboard_edges, mouse_moves;
+static uint64_t stick_moves, stick_rejected;
+static int64_t stick_pixels_x, stick_pixels_y;
+static uint64_t cursor_activity;
+static uint64_t taps_recognized, physical_primary_presses, physical_secondary_presses;
+static uint64_t left_down_edges, left_up_edges, dpad_assist_samples;
+
+static void bounded_increment(uint64_t *counter)
+{
+    if (*counter != UINT64_MAX) (*counter)++;
+}
+#define CURSOR_SPACE_WIDTH 1920
+#define CURSOR_SPACE_HEIGHT 1080
+#define CURSOR_SLOT_BYTES (64u * 1024u)
+#define CURSOR_IMAGE_SIDE 64u
+#define CURSOR_SCALE 2u
+struct cursor_point { int x, y; };
+static atomic_uint_fast64_t cursor_position_bits =
+    ((uint64_t)(CURSOR_SPACE_HEIGHT / 2) << 32) | (CURSOR_SPACE_WIDTH / 2);
+#define CURSOR_STICK_DEADZONE 24
+#define CURSOR_STICK_SPEED 1400
+#define CURSOR_FIXED_ONE (INT64_C(1) << 16)
+static uint8_t cursor_rx = 128, cursor_ry = 128;
+static int64_t cursor_remainder_x, cursor_remainder_y;
+static uint64_t cursor_stick_frame_at;
+#define PAD_BUTTON_UP 0x10u
+#define PAD_BUTTON_RIGHT 0x20u
+#define PAD_BUTTON_DOWN 0x40u
+#define PAD_BUTTON_LEFT 0x80u
+#define PAD_BUTTON_DPAD (PAD_BUTTON_UP | PAD_BUTTON_RIGHT | PAD_BUTTON_DOWN | PAD_BUTTON_LEFT)
+#define PAD_BUTTON_TOUCH 0x100000u
+#define PAD_BUTTON_INTERCEPTED 0x80000000u
+#define PAD_DPAD_ASSIST_RANGE 24
+#define TOUCH_TAP_MAX_MS 200
+#define TOUCH_TAP_MAX_EXCURSION 12
+#define TAP_CLICK_HOLD_MS 80
+#define CURSOR_IDLE_TIMEOUT_MS 3000
+enum touch_tap_phase { TOUCH_TAP_CLEAR, TOUCH_TAP_CANDIDATE, TOUCH_TAP_BLOCKED };
+static struct {
+    enum touch_tap_phase phase;
+    uint8_t id;
+    uint16_t x, y;
+    uint64_t started_at;
+} touch_tap;
+static uint32_t tap_click_pending;
+static int tap_click_down;
+static uint64_t tap_click_release_at;
+
+struct cursor_idle_policy {
+    uint64_t activity, active_at;
+    int initialized;
+};
+
+static void cursor_idle_policy_begin(struct cursor_idle_policy *policy,
+                                     uint64_t now, uint64_t activity)
+{
+    policy->activity = activity;
+    policy->active_at = now;
+    policy->initialized = 1;
+}
+
+static int cursor_idle_policy_visible(struct cursor_idle_policy *policy,
+                                      uint64_t now, uint64_t activity, unsigned held)
+{
+    if (!policy->initialized) return 1;
+    if (policy->activity != activity)
+    {
+        policy->activity = activity;
+        policy->active_at = now;
+    }
+    if (held)
+    {
+        policy->active_at = now;
+        return 1;
+    }
+    return now - policy->active_at < CURSOR_IDLE_TIMEOUT_MS;
+}
+
+
+static struct cursor_point cursor_position(void)
+{
+    const uint64_t bits = atomic_load_explicit(&cursor_position_bits, memory_order_relaxed);
+    return (struct cursor_point){(int)(uint32_t)bits, (int)(bits >> 32)};
+}
+
+void pokemmops5_cursor_sync(int x, int y, int width, int height)
+{
+    if (width <= 1 || height <= 1) return;
+    if (x < 0) x = 0;
+    else if (x >= width) x = width - 1;
+    if (y < 0) y = 0;
+    else if (y >= height) y = height - 1;
+    x = (int)((int64_t)x * (CURSOR_SPACE_WIDTH - 1) / (width - 1));
+    y = (int)((int64_t)y * (CURSOR_SPACE_HEIGHT - 1) / (height - 1));
+    atomic_store_explicit(&cursor_position_bits, ((uint64_t)(uint32_t)y << 32) | (uint32_t)x,
+                          memory_order_relaxed);
+}
+
+/* All native devices share one client-space pointer. Type 3 includes its
+ * target plus the original signed raw deltas in code/flags. */
+static int cursor_move(int dx, int dy)
+{
+    if (!dx && !dy) return 0;
+    const struct cursor_point current = cursor_position();
+    const int64_t wanted_x = (int64_t)current.x + dx, wanted_y = (int64_t)current.y + dy;
+    const int target_x = wanted_x < 0 ? 0 : wanted_x >= CURSOR_SPACE_WIDTH ? CURSOR_SPACE_WIDTH - 1 : (int)wanted_x;
+    const int target_y = wanted_y < 0 ? 0 : wanted_y >= CURSOR_SPACE_HEIGHT ? CURSOR_SPACE_HEIGHT - 1 : (int)wanted_y;
+    if (!pokemmops5_input_queue(3, (unsigned)dx, (unsigned)dy, target_x, target_y)) return -1;
+    cursor_activity++;
+    return 1;
+}
+
+static uint64_t microseconds(void)
+{
+    struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
+}
 
 static uint64_t milliseconds(void)
 {
-    struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
-    return (uint64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+    return microseconds() / 1000;
+}
+
+static int64_t cursor_stick_velocity(uint8_t value)
+{
+    const int direction = (int)value - 128;
+    const int magnitude = direction < 0 ? -direction : direction;
+    if (magnitude <= CURSOR_STICK_DEADZONE) return 0;
+    const int distance = magnitude - CURSOR_STICK_DEADZONE;
+    const int range = 128 - CURSOR_STICK_DEADZONE;
+    const int64_t velocity =
+        (int64_t)distance * distance * CURSOR_STICK_SPEED * CURSOR_FIXED_ONE / (range * range);
+    return direction < 0 ? -velocity : velocity;
+}
+
+static void cursor_stick_frame(uint64_t now)
+{
+    uint64_t elapsed = cursor_stick_frame_at ? now - cursor_stick_frame_at : 0;
+    if (elapsed > 100000) elapsed = 100000;
+    cursor_stick_frame_at = now;
+
+    const int64_t elapsed_us = (int64_t)elapsed;
+    int64_t moved_x = cursor_remainder_x + cursor_stick_velocity(cursor_rx) * elapsed_us / 1000000;
+    int64_t moved_y = cursor_remainder_y + cursor_stick_velocity(cursor_ry) * elapsed_us / 1000000;
+    const int dx = (int)(moved_x / CURSOR_FIXED_ONE);
+    const int dy = (int)(moved_y / CURSOR_FIXED_ONE);
+    cursor_remainder_x = moved_x - (int64_t)dx * CURSOR_FIXED_ONE;
+    cursor_remainder_y = moved_y - (int64_t)dy * CURSOR_FIXED_ONE;
+    const int result = cursor_move(dx, dy);
+    if (result > 0)
+    {
+        stick_moves++;
+        stick_pixels_x += dx;
+        stick_pixels_y += dy;
+    }
+    else if (result < 0) stick_rejected++;
 }
 
 static unsigned key_vk(unsigned usage)
@@ -96,7 +252,7 @@ static void keyboard_sample(unsigned device, const struct keyboard_data *sample)
         if (modifier != (pass == 0)) continue;
         unsigned down = 0;
         for (unsigned i = 0; i < 8; i++) down |= keyboard_held[i][vk];
-        if (down != key_held[vk] && wowps5_input_queue(1, vk, key_flags(vk) | (down ? 0 : 2), 0, 0))
+        if (down != key_held[vk] && pokemmops5_input_queue(1, vk, key_flags(vk) | (down ? 0 : 2), 0, 0))
         {
             key_held[vk] = down;
             keyboard_edges++;
@@ -105,23 +261,50 @@ static void keyboard_sample(unsigned device, const struct keyboard_data *sample)
         }
     }
 }
-static void mouse_buttons(unsigned device, unsigned held)
+static unsigned mouse_buttons_wanted(void)
+{
+    unsigned all = 0;
+    for (unsigned i = 0; i < MOUSE_SOURCE_COUNT; i++) all |= mouse_held[i];
+    return all;
+}
+
+
+static unsigned mouse_buttons(unsigned device, unsigned held)
 {
     static const unsigned down[] = {2,8,32,128,128}, up[] = {4,16,64,256,256};
     mouse_held[device] = held & 31;
-    unsigned all = 0;
-    for (unsigned i = 0; i < 9; i++) all |= mouse_held[i];
+    const unsigned all = mouse_buttons_wanted();
     for (unsigned i = 0; i < 5; i++) if ((all ^ buttons_held) & (1u << i))
-        if (wowps5_input_queue(2, i < 3 ? 0 : i-2, all & (1u << i) ? down[i] : up[i], 0, 0))
+    {
+        const struct cursor_point position = cursor_position();
+        if (pokemmops5_input_queue(4, i < 3 ? 0 : i-2,
+                                  all & (1u << i) ? down[i] : up[i], position.x, position.y))
+        {
             buttons_held = (buttons_held & ~(1u << i)) | (all & (1u << i));
+            cursor_activity++;
+            if (!i)
+                bounded_increment(all & 1 ? &left_down_edges : &left_up_edges);
+        }
+    }
+    return all;
 }
 static void mouse_sample(unsigned device, const struct mouse_data *sample)
 {
     int usable = sample->connected && !(sample->buttons & 0x80000000u);
-    if (usable && (sample->x || sample->y)) { wowps5_input_queue(2, 0, 1, sample->x, sample->y); mouse_moves++; }
+    if (usable && cursor_move(sample->x, sample->y) > 0) mouse_moves++;
     mouse_buttons(device, usable ? sample->buttons : 0);
-    if (usable && sample->wheel) wowps5_input_queue(2, (uint32_t)(sample->wheel * 120), 0x800, 0, 0);
-    if (usable && sample->tilt) wowps5_input_queue(2, (uint32_t)(sample->tilt * 120), 0x1000, 0, 0);
+    if (usable && (sample->wheel || sample->tilt))
+    {
+        const struct cursor_point position = cursor_position();
+        if (sample->wheel &&
+            pokemmops5_input_queue(4, (uint32_t)(sample->wheel * 120), 0x800,
+                                   position.x, position.y))
+            cursor_activity++;
+        if (sample->tilt &&
+            pokemmops5_input_queue(4, (uint32_t)(sample->tilt * 120), 0x1000,
+                                   position.x, position.y))
+            cursor_activity++;
+    }
 }
 static int16_t axis(unsigned value, int invert)
 {
@@ -134,11 +317,103 @@ static int16_t axis(unsigned value, int invert)
 }
 /* --- on-screen keyboard: shortcut gate, system dialog, typing (wine_osk.c) --- */
 #include "wine_osk.c"
+
+static void tap_click_request(void)
+{
+    if (tap_click_pending != UINT32_MAX) tap_click_pending++;
+}
+static void tap_click_cancel_pending(void)
+{
+    tap_click_pending = 0;
+    if (tap_click_down || mouse_held[MOUSE_TAP_SOURCE])
+    {
+        tap_click_down = 1;
+        tap_click_release_at = 0;
+    }
+}
+
+
+/* A completed tap stays down for at least 80 ms unless interrupted. Queue
+ * refusal holds the current edge, and another source's left is never released. */
+static void tap_click_tick(void)
+{
+    if (tap_click_down)
+    {
+        if (tap_click_release_at && OSK_NOW() < tap_click_release_at) return;
+        const unsigned all = mouse_buttons(MOUSE_TAP_SOURCE, 0);
+        if (!((all ^ buttons_held) & 1))
+        {
+            tap_click_down = 0;
+            tap_click_release_at = 0;
+        }
+        return;
+    }
+    if (!tap_click_pending) return;
+    const unsigned all = mouse_buttons(MOUSE_TAP_SOURCE, 1);
+    if (!((all ^ buttons_held) & 1))
+    {
+        tap_click_pending--;
+        tap_click_down = 1;
+        tap_click_release_at = OSK_NOW() + TAP_CLICK_HOLD_MS;
+    }
+}
+
+static void touch_tap_sample(const struct pad_data *sample, int usable, int owned)
+{
+    if (!sample->connected)
+    {
+        tap_click_cancel_pending();
+        touch_tap.phase = TOUCH_TAP_BLOCKED;
+        return;
+    }
+    if (!usable || owned)
+    {
+        tap_click_cancel_pending();
+        touch_tap.phase = sample->touches ? TOUCH_TAP_BLOCKED : TOUCH_TAP_CLEAR;
+        return;
+    }
+    if ((sample->buttons & PAD_BUTTON_TOUCH) || sample->touches > 1)
+    {
+        touch_tap.phase = sample->touches ? TOUCH_TAP_BLOCKED : TOUCH_TAP_CLEAR;
+        return;
+    }
+    if (!sample->touches)
+    {
+        if (touch_tap.phase == TOUCH_TAP_CANDIDATE &&
+            OSK_NOW() - touch_tap.started_at <= TOUCH_TAP_MAX_MS)
+        {
+            bounded_increment(&taps_recognized);
+            tap_click_request();
+        }
+        touch_tap.phase = TOUCH_TAP_CLEAR;
+        return;
+    }
+
+    const struct touch *t = &sample->touch[0];
+    if (touch_tap.phase == TOUCH_TAP_CLEAR)
+    {
+        touch_tap.phase = TOUCH_TAP_CANDIDATE;
+        touch_tap.id = t->id;
+        touch_tap.x = t->x;
+        touch_tap.y = t->y;
+        touch_tap.started_at = OSK_NOW();
+        return;
+    }
+    if (touch_tap.phase != TOUCH_TAP_CANDIDATE) return;
+    const int dx = (int)t->x - touch_tap.x, dy = (int)t->y - touch_tap.y;
+    if (t->id != touch_tap.id || dx < -TOUCH_TAP_MAX_EXCURSION ||
+        dx > TOUCH_TAP_MAX_EXCURSION || dy < -TOUCH_TAP_MAX_EXCURSION ||
+        dy > TOUCH_TAP_MAX_EXCURSION)
+        touch_tap.phase = TOUCH_TAP_BLOCKED;
+}
 static void pad_sample(const struct pad_data *sample)
 {
-    static const uint32_t native[] = {0x10,0x40,0x80,0x20,8,1,2,4,0x400,0x800,0x4000,0x2000,0x8000,0x1000};
+    static const uint32_t native[] = {PAD_BUTTON_UP,PAD_BUTTON_DOWN,PAD_BUTTON_LEFT,PAD_BUTTON_RIGHT,
+                                     8,1,2,4,0x400,0x800,0x4000,0x2000,0x8000,0x1000};
     static const uint16_t xbox[] = {1,2,4,8,0x10,0x20,0x40,0x80,0x100,0x200,0x1000,0x2000,0x4000,0x8000};
-    int usable = sample->connected && !(sample->buttons & 0x80000000u);
+    const uint32_t raw_buttons = sample->buttons;
+    const int raw_usable = sample->connected && !(raw_buttons & PAD_BUTTON_INTERCEPTED);
+    int usable = raw_usable;
     if (usable) pad_records++;
     /* --- on-screen keyboard: a pad it owns is as one the system intercepted,
      * except that the game keeps it: connected and neutral. Otherwise the game
@@ -149,13 +424,30 @@ static void pad_sample(const struct pad_data *sample)
     sample = &gated;
     if (owned) usable = 0;
     /* --- end on-screen keyboard --- */
+    cursor_rx = usable ? sample->rx : 128;
+    cursor_ry = usable ? sample->ry : 128;
     struct gamepad next = {0};
     if (usable && pad_enabled)
     {
-        for (unsigned i = 0; i < 14; i++) if (sample->buttons & native[i]) next.buttons |= xbox[i];
+        for (unsigned i = 0; i < 14; i++)
+            if (sample->buttons & native[i]) next.buttons |= xbox[i];
         next.lt = sample->l2; next.rt = sample->r2;
         next.lx = axis(sample->lx, 0); next.ly = axis(sample->ly, 1);
-        next.rx = axis(sample->rx, 0); next.ry = axis(sample->ry, 1);
+        const int physical_lx = (int)sample->lx - 128;
+        const int physical_ly = (int)sample->ly - 128;
+        if ((sample->buttons & PAD_BUTTON_DPAD) &&
+            physical_lx >= -PAD_DPAD_ASSIST_RANGE && physical_lx <= PAD_DPAD_ASSIST_RANGE &&
+            physical_ly >= -PAD_DPAD_ASSIST_RANGE && physical_ly <= PAD_DPAD_ASSIST_RANGE)
+        {
+            bounded_increment(&dpad_assist_samples);
+            const int horizontal = !!(sample->buttons & PAD_BUTTON_RIGHT) -
+                                   !!(sample->buttons & PAD_BUTTON_LEFT);
+            const int vertical = !!(sample->buttons & PAD_BUTTON_UP) -
+                                 !!(sample->buttons & PAD_BUTTON_DOWN);
+            next.lx = horizontal < 0 ? -32768 : horizontal > 0 ? 32767 : 0;
+            next.ly = vertical < 0 ? -32768 : vertical > 0 ? 32767 : 0;
+        }
+        /* The right stick belongs exclusively to the native pointer. */
     }
     if (pad_connected != connected || memcmp(&next, &gamepad.pad, sizeof(next)))
     { gamepad.pad = next; if (!++gamepad.packet) ++gamepad.packet; }
@@ -166,35 +458,124 @@ static void pad_sample(const struct pad_data *sample)
         /* Lifting/replacing a finger rebases without moving the cursor. */
         if (touch_active && touch_id == t->id && (t->x != touch_x || t->y != touch_y))
         {
-            wowps5_input_queue(2, 0, 1, ((int)t->x-touch_x)*2, ((int)t->y-touch_y)*2);
-            touch_moves++;
+            if (cursor_move(((int)t->x-touch_x)*2, ((int)t->y-touch_y)*2) > 0) touch_moves++;
         }
         touch_active = 1; touch_id = t->id; touch_x = t->x; touch_y = t->y;
     }
     else touch_active = 0;
-    if (usable && (sample->buttons & 0x100000))
+    touch_tap_sample(sample, raw_usable, owned);
+    if (usable && (sample->buttons & PAD_BUTTON_TOUCH))
     {
-        /* Latch the click side until release so dragging across the center
-         * never switches buttons. Two fingers also request secondary click. */
-        if (!touch_click) touch_click = sample->touches > 1 || (touch_active && touch_x >= 960) ? 2 : 1;
+        /* Latch the choice until release. Two fingers request secondary;
+         * a one-finger or no-finger mechanical press is always primary. */
+        if (!touch_click)
+        {
+            touch_click = sample->touches > 1 ? 2 : 1;
+            bounded_increment(touch_click == 1 ? &physical_primary_presses :
+                                                &physical_secondary_presses);
+        }
     }
     else touch_click = 0;
-    mouse_buttons(8, touch_click);
+    mouse_buttons(MOUSE_PAD_SOURCE, touch_click);
 }
 
-int wowps5_gamepad_state(unsigned index, void *state)
+
+int pokemmops5_gamepad_state(unsigned index, void *state)
 {
     if (index >= 4 || !state) return 160;
     pthread_mutex_lock(&devices_lock);
     int result = index == 0 && pad_connected ? 0 : 1167;
     if (!result) memcpy(state, &gamepad, sizeof(gamepad));
     static int reported;
-    if (!result && !reported) { fprintf(stderr, "[WoWPS5 input] Windows XInput reached native controller\n"); reported = 1; }
+    if (!result && !reported) { fprintf(stderr, "[PokeMMO PS5 input] Windows XInput reached native controller\n"); reported = 1; }
     pthread_mutex_unlock(&devices_lock);
     return result;
 }
 
-#ifndef WOWPS5_INPUT_TEST
+#ifndef POKEMMOPS5_INPUT_TEST
+int wsi_videoout_cursor_set(const uint32_t *image, int hotspot_x, int hotspot_y);
+int wsi_videoout_cursor_position(int x, int y, int space_width, int space_height);
+int wsi_videoout_cursor_disable(void);
+
+static uint32_t *cursor_image;
+static struct cursor_idle_policy cursor_idle;
+static int cursor_wsi_visible;
+
+static void cursor_build_image(void)
+{
+    memset(cursor_image, 0, CURSOR_SLOT_BYTES);
+    for (unsigned y = 0; y < POKEMMOPS5_CURSOR_HEIGHT; y++)
+        for (unsigned x = 0; x < POKEMMOPS5_CURSOR_WIDTH; x++)
+        {
+            const char pixel = pokemmops5_cursor_arrow[y][x];
+            if (pixel == ' ') continue;
+            const uint32_t color = pixel == '#' ? 0xff000000u : 0xffffffffu;
+            for (unsigned yy = 0; yy < CURSOR_SCALE; yy++)
+                for (unsigned xx = 0; xx < CURSOR_SCALE; xx++)
+                    cursor_image[(y * CURSOR_SCALE + yy) * CURSOR_IMAGE_SIDE + x * CURSOR_SCALE + xx] = color;
+        }
+}
+
+static void cursor_flush(void)
+{
+    for (size_t i = 0; i < CURSOR_SLOT_BYTES; i += 64)
+        __asm__ volatile("clflush (%0)" : : "r"((uint8_t *)cursor_image + i) : "memory");
+    __asm__ volatile("mfence" ::: "memory");
+}
+
+static int cursor_allocate(void)
+{
+    int64_t physical = -1;
+    int result = sceKernelAllocateDirectMemory(0, sceKernelGetDirectMemorySize(),
+        CURSOR_SLOT_BYTES, CURSOR_SLOT_BYTES, PS5_KERNEL_DIRECT_TYPE_CPU, &physical);
+    void *mapping = NULL;
+    if (!result)
+        result = sceKernelMapDirectMemory(&mapping, CURSOR_SLOT_BYTES,
+            PS5_KERNEL_PROT_CPU_READ | PS5_KERNEL_PROT_CPU_WRITE |
+            PS5_KERNEL_PROT_GPU_READ | PS5_KERNEL_PROT_GPU_WRITE,
+            0, physical, CURSOR_SLOT_BYTES);
+    if (result)
+    {
+        if (physical >= 0) sceKernelReleaseDirectMemory(physical, CURSOR_SLOT_BYTES);
+        fprintf(stderr, "[PokeMMO PS5 input] cursor direct memory failed: %#x\n", (unsigned)result);
+        return result;
+    }
+    cursor_image = mapping;
+    cursor_build_image();
+    cursor_flush();
+    fprintf(stderr, "[PokeMMO PS5 input] native cursor image=%p bytes=%u scale=%u\n",
+            cursor_image, CURSOR_SLOT_BYTES, CURSOR_SCALE);
+    return 0;
+}
+
+static void cursor_update(void)
+{
+    static int visible_logged;
+    if (!cursor_image) return;
+
+    const uint64_t now = milliseconds();
+    if (!cursor_idle_policy_visible(&cursor_idle, now, cursor_activity,
+                                    buttons_held | mouse_buttons_wanted()))
+    {
+        if (cursor_wsi_visible && !wsi_videoout_cursor_disable()) cursor_wsi_visible = 0;
+        return;
+    }
+    if (wsi_videoout_cursor_set(cursor_image, 0, 0)) return;
+    const struct cursor_point position = cursor_position();
+    if (wsi_videoout_cursor_position(position.x, position.y,
+                                     CURSOR_SPACE_WIDTH, CURSOR_SPACE_HEIGHT))
+        return;
+    cursor_wsi_visible = 1;
+    if (!cursor_idle.initialized)
+        cursor_idle_policy_begin(&cursor_idle, now, cursor_activity);
+    if (!visible_logged)
+    {
+        fprintf(stderr, "[PokeMMO PS5 input] native cursor visible in %dx%d pointer space\n",
+                CURSOR_SPACE_WIDTH, CURSOR_SPACE_HEIGHT);
+        visible_logged = 1;
+    }
+}
+
 int sceUserServiceInitialize(const void *);
 int sceUserServiceGetInitialUser(int32_t *);
 int scePadInit(void);
@@ -236,13 +617,13 @@ static void peripheral_open(struct peripheral *p, uint16_t id, const char *prefi
     int init = p->init();
     unsigned opened = 0;
     for (unsigned i = 0; i < 8; i++) { p->handles[i] = p->open(user, 0, i, NULL); if (p->handles[i] >= 0) opened++; }
-    fprintf(stderr, "[WoWPS5 input] %s module=%#x init=%#x open handles=%u\n", prefix, loaded, init, opened);
+    fprintf(stderr, "[PokeMMO PS5 input] %s module=%#x init=%#x open handles=%u\n", prefix, loaded, init, opened);
 }
 static void *devices_thread(void *unused)
 {
     (void)unused;
     uint64_t report_at = milliseconds() + 10000;
-    int diagnostic = !!getenv("WOWPS5_INPUT_DIAGNOSTICS");
+    int diagnostic = !!getenv("POKEMMOPS5_INPUT_DIAGNOSTICS");
     for (;;)
     {
         pthread_mutex_lock(&devices_lock);
@@ -267,28 +648,44 @@ static void *devices_thread(void *unused)
                 if (n < 0) { struct mouse_data neutral = {0}; mouse_sample(device, &neutral); }
             }
         }
+        tap_click_tick();
+        cursor_stick_frame(microseconds());
         if (repeat_key && milliseconds() >= repeat_at)
-        { wowps5_input_queue(1, repeat_key, key_flags(repeat_key), 0, 0); repeat_at = milliseconds() + 33; }
+        { pokemmops5_input_queue(1, repeat_key, key_flags(repeat_key), 0, 0); repeat_at = milliseconds() + 33; }
         if (diagnostic && milliseconds() >= report_at)
         {
-            fprintf(stderr, "[WoWPS5 input] device counts: pad=%llu touch-moves=%llu key-edges=%llu mouse-moves=%llu connected=%d\n",
+            const struct cursor_point position = cursor_position();
+            fprintf(stderr, "[PokeMMO PS5 input] device counts: pad=%llu touch-moves=%llu key-edges=%llu "
+                    "mouse-moves=%llu stick-moves=%llu rejected=%llu stick-pixels=%lld,%lld "
+                    "taps=%llu physical-primary=%llu physical-secondary=%llu "
+                    "left-down=%llu left-up=%llu dpad-assist=%llu "
+                    "axes=%u,%u cursor=%d,%d connected=%d\n",
                 (unsigned long long)pad_records, (unsigned long long)touch_moves,
-                (unsigned long long)keyboard_edges, (unsigned long long)mouse_moves, pad_connected);
+                (unsigned long long)keyboard_edges, (unsigned long long)mouse_moves,
+                (unsigned long long)stick_moves, (unsigned long long)stick_rejected,
+                (long long)stick_pixels_x, (long long)stick_pixels_y,
+                (unsigned long long)taps_recognized,
+                (unsigned long long)physical_primary_presses,
+                (unsigned long long)physical_secondary_presses,
+                (unsigned long long)left_down_edges, (unsigned long long)left_up_edges,
+                (unsigned long long)dpad_assist_samples,
+                cursor_rx, cursor_ry, position.x, position.y, pad_connected);
             report_at = milliseconds() + 10000;
         }
         pthread_mutex_unlock(&devices_lock);
+        cursor_update();
         osk_tick();   /* on-screen keyboard: the dialog and the typing, outside the lock */
         usleep(4000);
     }
     return NULL;
 }
-void wowps5_gamepad_enable(int enabled)
+void pokemmops5_gamepad_enable(int enabled)
 {
     pthread_mutex_lock(&devices_lock); pad_enabled = !!enabled;
     if (!enabled && pad_handle >= 0) { uint8_t zero[2] = {0}; scePadSetVibration(pad_handle, zero); }
     pthread_mutex_unlock(&devices_lock);
 }
-int wowps5_gamepad_vibrate(unsigned index, unsigned left, unsigned right)
+int pokemmops5_gamepad_vibrate(unsigned index, unsigned left, unsigned right)
 {
     pthread_mutex_lock(&devices_lock);
     int result = index == 0 && pad_connected ? 0 : 1167;
@@ -296,22 +693,38 @@ int wowps5_gamepad_vibrate(unsigned index, unsigned left, unsigned right)
     pthread_mutex_unlock(&devices_lock);
     return result;
 }
-void wowps5_devices_start(void)
+void pokemmops5_devices_start(void)
 {
+    cursor_rx = cursor_ry = 128;
+    cursor_remainder_x = cursor_remainder_y = 0;
+    cursor_stick_frame_at = 0;
+    cursor_activity = 0;
+    touch_tap.phase = TOUCH_TAP_CLEAR;
+    tap_click_pending = tap_click_down = 0;
+    tap_click_release_at = 0;
+    taps_recognized = physical_primary_presses = physical_secondary_presses = 0;
+    left_down_edges = left_up_edges = dpad_assist_samples = 0;
+    memset(mouse_held, 0, sizeof(mouse_held));
+    buttons_held = 0;
+    memset(&cursor_idle, 0, sizeof(cursor_idle));
+    cursor_wsi_visible = 0;
+
     int32_t user = -1;
     sceUserServiceInitialize(NULL);
-    if (sceUserServiceGetInitialUser(&user) < 0) { fprintf(stderr, "[WoWPS5 input] no signed-in console user\n"); return; }
+    if (sceUserServiceGetInitialUser(&user) < 0) { fprintf(stderr, "[PokeMMO PS5 input] no signed-in console user\n"); return; }
     int init = scePadInit();
     for (int i = 0; i < 10 && pad_handle < 0; i++) { pad_handle = scePadOpen(user, 0, 0, NULL); if (pad_handle < 0) usleep(100000); }
-    fprintf(stderr, "[WoWPS5 input] pad init=%#x handle=%#x\n", init, pad_handle);
+    fprintf(stderr, "[PokeMMO PS5 input] pad init=%#x handle=%#x\n", init, pad_handle);
+    fprintf(stderr, "[PokeMMO PS5 input] left stick/D-pad/Cross use XInput; right stick uses native cursor\n");
     if (pad_handle >= 0) scePadSetVibrationMode(pad_handle, 2);
     keyboard.init = keyboard_init; keyboard.open = keyboard_open; keyboard.read = keyboard_read;
     mouse.init = mouse_init; mouse.open = mouse_open; mouse.read = mouse_read;
     peripheral_open(&keyboard, 0x0106, "sceKeyboard", user);
     peripheral_open(&mouse, 0x00a9, "sceMouse", user);
     osk_start(user);   /* on-screen keyboard: settings, sysmodule 0x0096 */
+    cursor_allocate();
     pthread_t thread;
     if (!pthread_create(&thread, NULL, devices_thread, NULL)) pthread_detach(thread);
-    else fprintf(stderr, "[WoWPS5 input] device thread unavailable\n");
+    else fprintf(stderr, "[PokeMMO PS5 input] device thread unavailable\n");
 }
 #endif

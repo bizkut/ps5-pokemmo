@@ -1,5 +1,5 @@
 diff --git a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
-index 4b9f0da..078e495 100644
+index 4b9f0da..0df897b 100644
 --- a/dlls/crypt32/unixlib.c
 +++ b/dlls/crypt32/unixlib.c
 @@ -54,7 +54,11 @@ WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -61,7 +61,7 @@ index 4b9f0da..078e495 100644
  
  static const char * const CRYPT_knownLocations[] = {
 +#ifdef __PROSPERO__
-+ "/data/wowps5/ca-certificates.crt",
++ "/data/pokemmo/ca-certificates.crt",
 +#endif
   "/etc/ssl/certs/ca-certificates.crt",
   "/etc/ssl/certs",
@@ -89,7 +89,7 @@ index 9a15bc3..85bad96 100644
  	unwind.c \
  	version.c \
 diff --git a/dlls/ntdll/unix/debug.c b/dlls/ntdll/unix/debug.c
-index 53516b9..d6adcd4 100644
+index 53516b9..e21d138 100644
 --- a/dlls/ntdll/unix/debug.c
 +++ b/dlls/ntdll/unix/debug.c
 @@ -41,6 +41,18 @@
@@ -101,9 +101,9 @@ index 53516b9..d6adcd4 100644
 + * writes to its stderr stream reaches klog through a pipe and a thread, so the
 + * last lines before a crash would be lost. The title supplies a synchronous
 + * writer. */
-+extern ssize_t wowps5_debug_write( const void *text, size_t length ) __attribute__((weak));
++extern ssize_t pokemmops5_debug_write( const void *text, size_t length ) __attribute__((weak));
 +#define write_debug_output( text, length ) \
-+    (wowps5_debug_write ? wowps5_debug_write( text, length ) : write( fileno(stderr), text, length ))
++    (pokemmops5_debug_write ? pokemmops5_debug_write( text, length ) : write( fileno(stderr), text, length ))
 +#else
 +#define write_debug_output( text, length ) write( 2, text, length )
 +#endif
@@ -181,7 +181,7 @@ index bd888b9..7416d8b 100644
      if (main_image_info.SubSystemType != IMAGE_SUBSYSTEM_WINDOWS_CUI)
          return;
 diff --git a/dlls/ntdll/unix/file.c b/dlls/ntdll/unix/file.c
-index 1bfec7a..56a5082 100644
+index 1bfec7a..4e03768 100644
 --- a/dlls/ntdll/unix/file.c
 +++ b/dlls/ntdll/unix/file.c
 @@ -813,7 +813,33 @@ static char *parse_mount_entries( FILE *f, dev_t dev, ino_t ino )
@@ -227,13 +227,13 @@ index 1bfec7a..56a5082 100644
 +/* A title cannot open a path relative to a descriptor (there is no openat, and
 + * no working directory): the title resolves such paths itself, from the path
 + * of the directory the descriptor was opened for. */
-+extern void wowps5_remember_fd( int fd, const char *path ) __attribute__((weak));
++extern void pokemmops5_remember_fd( int fd, const char *path ) __attribute__((weak));
 +
 +static void remember_root_directory( HANDLE handle, int fd )
 +{
 +    char *path = NULL;
 +
-+    if (wowps5_remember_fd && !server_get_unix_name( handle, &path )) wowps5_remember_fd( fd, path );
++    if (pokemmops5_remember_fd && !server_get_unix_name( handle, &path )) pokemmops5_remember_fd( fd, path );
 +    free( path );
 +}
 +#else
@@ -299,7 +299,7 @@ index 1bfec7a..56a5082 100644
          {
              if (needs_close) close( root_fd );
 diff --git a/dlls/ntdll/unix/loader.c b/dlls/ntdll/unix/loader.c
-index ebfb6af..898d607 100644
+index ebfb6af..ae09291 100644
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
 @@ -244,6 +244,7 @@ static char *build_relative_path( const char *base, const char *from, const char
@@ -327,7 +327,7 @@ index ebfb6af..898d607 100644
 +     * gives the installation. It is an installed layout under one root. */
 +    const char *root = getenv( "WINEPS5ROOT" );
 +
-+    if (!root) root = "/data/wowps5/wine";
++    if (!root) root = "/data/pokemmo/wine";
 +    dll_dir = build_path( root, "lib/wine" );
 +    ntdll_dir = build_path( dll_dir, "x86_64-unix" );
 +    bin_dir = build_path( root, "bin" );
@@ -1035,7 +1035,7 @@ index fa9138d..61b1413 100644
      {
          req->unix_tid  = get_unix_tid();
 diff --git a/dlls/ntdll/unix/signal_x86_64.c b/dlls/ntdll/unix/signal_x86_64.c
-index f807caa..46fa464 100644
+index f807caa..ba46325 100644
 --- a/dlls/ntdll/unix/signal_x86_64.c
 +++ b/dlls/ntdll/unix/signal_x86_64.c
 @@ -206,6 +206,19 @@ __ASM_GLOBAL_FUNC( modify_ldt,
@@ -1177,7 +1177,7 @@ index f807caa..46fa464 100644
 + * prints it that long after the start, three times two seconds apart.
 + */
 +#ifdef __PROSPERO__
-+extern ssize_t wowps5_debug_write( const void *text, size_t length ) __attribute__((weak));
++extern ssize_t pokemmops5_debug_write( const void *text, size_t length ) __attribute__((weak));
 +#endif
 +
 +/* WINEPS5_PROFILE=<seconds>: the same signal, twenty times a second, counts
@@ -1229,7 +1229,7 @@ index f807caa..46fa464 100644
 +                    inside ? "in Wine, called from" : "in the program, its last call into Wine from",
 +                    frame ? (long)frame->rip : 0 );
 +#ifdef __PROSPERO__
-+    if (wowps5_debug_write) wowps5_debug_write( line, len ); else
++    if (pokemmops5_debug_write) pokemmops5_debug_write( line, len ); else
 +#endif
 +    write( 2, line, len );
 +    /* what the program's stack holds above its call into Wine: return addresses among them */
@@ -1245,7 +1245,7 @@ index f807caa..46fa464 100644
 +                used += snprintf( text + used, sizeof(text) - used, " %lx", (long)stack[i] );
 +        text[used++] = '\n';
 +#ifdef __PROSPERO__
-+        if (wowps5_debug_write) wowps5_debug_write( text, used ); else
++        if (pokemmops5_debug_write) pokemmops5_debug_write( text, used ); else
 +#endif
 +        write( 2, text, used );
 +    }
@@ -1254,7 +1254,7 @@ index f807caa..46fa464 100644
 +static void profile_write( const char *text, int len )
 +{
 +#ifdef __PROSPERO__
-+    if (wowps5_debug_write) { wowps5_debug_write( text, len ); return; }
++    if (pokemmops5_debug_write) { pokemmops5_debug_write( text, len ); return; }
 +#endif
 +    write( 2, text, len );
 +}
@@ -1738,7 +1738,7 @@ index 9b6401e..83efec8 100644
  extern NTSTATUS get_thread_wow64_context( HANDLE handle, void *ctx, ULONG size );
  extern NTSTATUS set_thread_wow64_context( HANDLE handle, const void *ctx, ULONG size );
 diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
-index 64eed72..213ab18 100644
+index 64eed72..ca4aeb0 100644
 --- a/dlls/ntdll/unix/virtual.c
 +++ b/dlls/ntdll/unix/virtual.c
 @@ -91,6 +91,23 @@
@@ -1795,7 +1795,7 @@ index 64eed72..213ab18 100644
  
 +#ifdef __PROSPERO__
 +struct ps5_unixlib { const char *name; const void *funcs; int (*init)(void); };
-+extern const struct ps5_unixlib wowps5_unixlibs[] __attribute__((weak));  /* ends with a null name */
++extern const struct ps5_unixlib pokemmops5_unixlibs[] __attribute__((weak));  /* ends with a null name */
 +#endif
 +
  /***********************************************************************
@@ -1809,13 +1809,13 @@ index 64eed72..213ab18 100644
 +    /* A title cannot dlopen Wine's Unix libraries: they are linked into it, and
 +     * the title lists them (tools/wine-ps5/build-title-object.sh) by the name
 +     * the library would have had. */
-+    if ((builtin = get_builtin_module( module )) && builtin->unix_path && wowps5_unixlibs && !wow)
++    if ((builtin = get_builtin_module( module )) && builtin->unix_path && pokemmops5_unixlibs && !wow)
 +    {
 +        const char *name = strrchr( builtin->unix_path, '/' );
 +        const struct ps5_unixlib *lib;
 +
 +        name = name ? name + 1 : builtin->unix_path;
-+        for (lib = wowps5_unixlibs; lib->name; lib++)
++        for (lib = pokemmops5_unixlibs; lib->name; lib++)
 +        {
 +            if (strcmp( lib->name, name )) continue;
 +            /* as for a loaded library: its call table, or else its init entry */
@@ -1875,7 +1875,7 @@ index 64eed72..213ab18 100644
 +    const struct ps5_unixlib *lib;
 +    char name[64];
 +
-+    if (!wowps5_unixlibs || wow || !len) return STATUS_DLL_NOT_FOUND;
++    if (!pokemmops5_unixlibs || wow || !len) return STATUS_DLL_NOT_FOUND;
 +    for (i = 0; i < len; i++) if (nt_name->Buffer[i] == '.') stem = i;
 +    if (!stem || stem + sizeof(".so") > sizeof(name)) return STATUS_DLL_NOT_FOUND;
 +    for (i = 0; i < stem; i++)
@@ -1887,7 +1887,7 @@ index 64eed72..213ab18 100644
 +    }
 +    memcpy( name + stem, ".so", sizeof(".so") );
 +
-+    for (lib = wowps5_unixlibs; lib->name; lib++) if (!strcmp( lib->name, name )) break;
++    for (lib = pokemmops5_unixlibs; lib->name; lib++) if (!strcmp( lib->name, name )) break;
 +    if (!lib->name)
 +    {
 +        WARN_(module)( "%s is not linked into the title\n", debugstr_a(name) );
@@ -2411,22 +2411,80 @@ index 83b9f8f..a56dde6 100644
      }
      return STATUS_SUCCESS;
 diff --git a/dlls/win32u/driver.c b/dlls/win32u/driver.c
-index 4598ac7..88923fd 100644
+index 4598ac7..a3ea299 100644
 --- a/dlls/win32u/driver.c
 +++ b/dlls/win32u/driver.c
-@@ -792,6 +792,40 @@ static void nulldrv_GetDC( HDC hdc, HWND hwnd, HWND top_win, const RECT *win_rec
+@@ -695,6 +695,44 @@ static void nulldrv_DestroyCursorIcon( HCURSOR cursor )
+ static void nulldrv_SetCursor( HWND hwnd, HCURSOR cursor )
+ {
+ }
++#ifdef __PROSPERO__
++static BOOL ps5_get_cursor_client( RECT *client, POINT *origin )
++{
++    HWND hwnd = NtUserGetForegroundWindow();
++    origin->x = origin->y = 0;
++    return hwnd && get_client_rect( hwnd, client, get_dpi_for_window( hwnd ) ) &&
++           client_to_screen( hwnd, origin );
++}
++
++static void ps5_sync_cursor_position( INT x, INT y )
++{
++    extern void pokemmops5_cursor_sync(int, int, int, int);
++    RECT client;
++    POINT origin;
++
++    if (!ps5_get_cursor_client( &client, &origin )) return;
++    pokemmops5_cursor_sync( x - origin.x, y - origin.y,
++                           client.right - client.left, client.bottom - client.top );
++}
++
++static BOOL ps5_cursor_position_to_screen( INT x, INT y, INT width, INT height, POINT *position )
++{
++    RECT client;
++    POINT origin;
++    INT client_width, client_height;
++
++    if (width <= 1 || height <= 1 || !ps5_get_cursor_client( &client, &origin )) return FALSE;
++    client_width = client.right - client.left;
++    client_height = client.bottom - client.top;
++    if (client_width <= 1 || client_height <= 1) return FALSE;
++    x = max( 0, min( x, width - 1 ) );
++    y = max( 0, min( y, height - 1 ) );
++    position->x = origin.x + (INT)((INT64)x * (client_width - 1) / (width - 1));
++    position->y = origin.y + (INT)((INT64)y * (client_height - 1) / (height - 1));
++    return TRUE;
++}
++#endif
++
+ 
+ static BOOL nulldrv_GetCursorPos( LPPOINT pt )
+ {
+@@ -703,6 +741,9 @@ static BOOL nulldrv_GetCursorPos( LPPOINT pt )
+ 
+ static BOOL nulldrv_SetCursorPos( INT x, INT y )
+ {
++#ifdef __PROSPERO__
++    ps5_sync_cursor_position( x, y );
++#endif
+     return TRUE;
+ }
+ 
+@@ -792,6 +833,78 @@ static void nulldrv_GetDC( HDC hdc, HWND hwnd, HWND top_win, const RECT *win_rec
  
  static BOOL nulldrv_ProcessEvents( DWORD mask )
  {
 +#ifdef __PROSPERO__
-+    extern int wowps5_input_read(unsigned *, unsigned *, unsigned *, int *, int *);
++    static LONG dispatching;
++    extern int pokemmops5_input_read(unsigned *, unsigned *, unsigned *, int *, int *);
 +    unsigned type, code, flags, processed = 0;
 +    int x, y;
-+    /* Only a Wine thread can send server input. The TLS reader queues it. */
-+    while (processed < 64 && wowps5_input_read(&type, &code, &flags, &x, &y))
++
++    if (InterlockedCompareExchange( &dispatching, 1, 0 )) return FALSE;
++    while (processed < 64 && pokemmops5_input_read(&type, &code, &flags, &x, &y))
 +    {
 +        INPUT input = {0};
 +        struct raw_mouse raw = {0};
++        UINT send_flags = 0;
 +        if (type == 1)
 +        {
 +            input.type = INPUT_KEYBOARD;
@@ -2438,6 +2496,40 @@ index 4598ac7..88923fd 100644
 +                input.ki.wScan = NtUserMapVirtualKeyEx(code, MAPVK_VK_TO_VSC, NtUserGetKeyboardLayout(0)) & 0xff;
 +            }
 +        }
++        else if (type == 3 || type == 4)
++        {
++            const UINT release_flags = MOUSEEVENTF_LEFTUP | MOUSEEVENTF_RIGHTUP |
++                                       MOUSEEVENTF_MIDDLEUP | MOUSEEVENTF_XUP;
++            POINT position;
++
++            send_flags = SEND_HWMSG_RAWINPUT;
++            if (!ps5_cursor_position_to_screen( x, y, 1920, 1080, &position ))
++            {
++                if (type != 4 || !(flags & release_flags))
++                {
++                    processed++;
++                    continue;
++                }
++                input.type = INPUT_MOUSE;
++                input.mi.mouseData = code;
++                input.mi.dwFlags = MOUSEEVENTF_MOVE_NOCOALESCE | (flags & release_flags);
++            }
++            else
++            {
++                input.type = INPUT_MOUSE;
++                input.mi.dx = position.x;
++                input.mi.dy = position.y;
++                input.mi.mouseData = type == 4 ? code : 0;
++                input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
++                                   MOUSEEVENTF_MOVE_NOCOALESCE | (type == 4 ? flags : 0);
++                if (type == 3)
++                {
++                    raw.count = 1;
++                    raw.data[0].x = (int)code;
++                    raw.data[0].y = (int)flags;
++                }
++            }
++        }
 +        else
 +        {
 +            input.type = INPUT_MOUSE;
@@ -2447,15 +2539,16 @@ index 4598ac7..88923fd 100644
 +            if ((flags & MOUSEEVENTF_MOVE) && !(flags & MOUSEEVENTF_ABSOLUTE))
 +            { raw.count = 1; raw.data[0].x = x; raw.data[0].y = y; }
 +        }
-+        NtUserSendHardwareInput(0, 0, &input, input.type == INPUT_MOUSE ? (LPARAM)&raw : 0);
++        NtUserSendHardwareInput(0, send_flags, &input, input.type == INPUT_MOUSE ? (LPARAM)&raw : 0);
 +        processed++;
 +    }
++    InterlockedExchange( &dispatching, 0 );
 +    return processed != 0;
 +#endif
      return FALSE;
  }
  
-@@ -1026,6 +1060,113 @@ static BOOL load_desktop_driver( HWND hwnd )
+@@ -1026,6 +1139,113 @@ static BOOL load_desktop_driver( HWND hwnd )
      return ret;
  }
  
@@ -2616,7 +2709,7 @@ index 8c9a2aa..7c7c4d5 100644
      if (HIWORD(ret)) /* is it an error code? */
      {
 diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
-index 6ed5b77..92e813e 100644
+index 6ed5b77..23a6bd1 100644
 --- a/dlls/win32u/sysparams.c
 +++ b/dlls/win32u/sysparams.c
 @@ -2707,6 +2707,27 @@ static NTSTATUS default_update_display_devices( struct device_manager_ctx *ctx )
@@ -2624,17 +2717,17 @@ index 6ed5b77..92e813e 100644
          mode.dmFields |= DM_POSITION;
      }
 +#ifdef __PROSPERO__
-+    /* The console's output has one mode, and it is the one a window's Vulkan
-+     * surface is created in (vulkan.c): that is the display, whatever the
-+     * registry holds. 1920x1080 when the driver offers no display. */
++    /* Report the physical console output as Wine's desktop. PokeMMO keeps its
++     * 1920x1080 client window unmaximized in that space; the cursor bridge maps
++     * desktop coordinates back through the foreground client rectangle. */
 +    {
-+        UINT width = 1920, height = 1080, frequency = 60;
++        UINT output_width = 1920, output_height = 1080, frequency = 60;
 +
-+        ps5_get_display_mode( &width, &height, &frequency );
++        ps5_get_display_mode( &output_width, &output_height, &frequency );
 +        mode = modes[2];
 +        mode.dmFields |= DM_POSITION;
-+        mode.dmPelsWidth = width;
-+        mode.dmPelsHeight = height;
++        mode.dmPelsWidth = output_width;
++        mode.dmPelsHeight = output_height;
 +        mode.dmDisplayFrequency = frequency;
 +        monitor.rc_monitor.right = mode.dmPelsWidth;
 +        monitor.rc_monitor.bottom = mode.dmPelsHeight;
@@ -2660,10 +2753,10 @@ index 6ed5b77..92e813e 100644
          FIXME( "invalid code %u\n", code );
          return 0;
 diff --git a/dlls/win32u/vulkan.c b/dlls/win32u/vulkan.c
-index f07e78a..0e74fa4 100644
+index f07e78a..d0626d8 100644
 --- a/dlls/win32u/vulkan.c
 +++ b/dlls/win32u/vulkan.c
-@@ -36,6 +36,18 @@ WINE_DEFAULT_DEBUG_CHANNEL(vulkan);
+@@ -36,6 +36,20 @@ WINE_DEFAULT_DEBUG_CHANNEL(vulkan);
  
  static PFN_vkGetDeviceProcAddr p_vkGetDeviceProcAddr;
  static PFN_vkGetInstanceProcAddr p_vkGetInstanceProcAddr;
@@ -2678,11 +2771,13 @@ index f07e78a..0e74fa4 100644
 + * would otherwise be given a headless one and draw to nothing. */
 +static LONG ps5_display_taken;
 +static VkSurfaceKHR ps5_display_host_surface;
++#define PS5_DISPLAY_MIN_WIDTH 320
++#define PS5_DISPLAY_MIN_HEIGHT 200
 +#endif
  static PFN_vkCreateInstance p_vkCreateInstance;
  static PFN_vkEnumerateInstanceExtensionProperties p_vkEnumerateInstanceExtensionProperties;
  
-@@ -459,6 +471,10 @@ static VkResult convert_instance_create_info( struct mempool *pool, VkInstanceCr
+@@ -459,6 +473,10 @@ static VkResult convert_instance_create_info( struct mempool *pool, VkInstanceCr
  #define USE_VK_EXT(x) if (instance->obj.extensions.has_ ## x) extensions[count++] = #x;
      ALL_VK_INSTANCE_EXTS
  #undef USE_VK_EXT
@@ -2693,7 +2788,7 @@ index f07e78a..0e74fa4 100644
  
      TRACE( "Enabling %u host instance extensions\n", count );
      for (const char **extension = extensions, **end = extension + count; extension < end; extension++)
-@@ -1570,6 +1586,13 @@ static void win32u_vkDestroySurfaceKHR( VkInstance client_instance, VkSurfaceKHR
+@@ -1570,6 +1588,13 @@ static void win32u_vkDestroySurfaceKHR( VkInstance client_instance, VkSurfaceKHR
      TRACE( "instance %p, handle 0x%s, allocator %p\n", instance, wine_dbgstr_longlong( client_surface ), allocator );
      if (allocator) FIXME( "Support for allocation callbacks not implemented yet\n" );
  
@@ -2707,23 +2802,40 @@ index f07e78a..0e74fa4 100644
      instance->p_vkDestroySurfaceKHR( instance->host.instance, surface->obj.host.surface, NULL /* allocator */ );
      use_window_client_surface( surface->client, FALSE );
      client_surface_release( surface->client );
-@@ -2025,6 +2048,15 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
-     }
- 
-     res = device->p_vkQueuePresentKHR( queue->host.queue, present_info );
+@@ -1994,6 +2019,9 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+     struct vulkan_device *device = queue->device;
+     const VkSwapchainKHR *client_swapchains;
+     VkResult res;
 +#ifdef __PROSPERO__
++    BOOL ps5_display_presented = FALSE;
++#endif
+ 
+     TRACE( "queue %p, present_info %p\n", queue, present_info );
+ 
+@@ -2051,7 +2079,22 @@ static VkResult win32u_vkQueuePresentKHR( VkQueue client_queue, const VkPresentI
+             if (present_info->pResults) present_info->pResults[i] = VK_SUBOPTIMAL_KHR;
+             if (!res) res = VK_SUBOPTIMAL_KHR;
+         }
++#ifdef __PROSPERO__
++        if (surface->obj.host.surface == ps5_display_host_surface &&
++            (!present_info->pResults || present_info->pResults[i] >= VK_SUCCESS) && res >= VK_SUCCESS)
++            ps5_display_presented = TRUE;
++#endif
+     }
++#ifdef __PROSPERO__
++    if (ps5_display_presented)
 +    {
-+        /* the title keeps the console's splash up until the program's frames are there */
-+        extern void wowps5_first_frame(void);
++        /* Keep the title's splash up until the program presents to the console output. */
++        extern void pokemmops5_first_frame(void);
 +        static LONG presented;
 +
-+        if (res >= 0 && InterlockedIncrement( &presented ) == 3) wowps5_first_frame();
++        if (InterlockedIncrement( &presented ) == 3) pokemmops5_first_frame();
 +    }
 +#endif
  
-     for (uint32_t i = 0; i < present_info->swapchainCount; i++)
-     {
-@@ -3007,9 +3039,187 @@ static struct vulkan_funcs vulkan_funcs =
+     if (swapchains != swapchains_buffer) free( swapchains );
+ 
+@@ -3007,9 +3050,205 @@ static struct vulkan_funcs vulkan_funcs =
      .p_vkUnmapMemory2KHR = win32u_vkUnmapMemory2KHR,
  };
  
@@ -2906,12 +3018,30 @@ index f07e78a..0e74fa4 100644
  {
      VkHeadlessSurfaceCreateInfoEXT create_info = {.sType = VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT};
 +#ifdef __PROSPERO__
-+    if (ps5_host_has_display && !ps5_display_surface_create( instance, surface )) return VK_SUCCESS;
++    if (ps5_host_has_display)
++    {
++        SIZE virtual_size, monitor_size;
++
++        client_surface_get_size( client, &virtual_size, &monitor_size );
++        /* WineD3D, WGL, and SDL create tiny setup drawables before the game
++         * window. They must remain headless instead of taking the console's
++         * only display plane. 320x200 is the smallest display candidate. */
++        if (virtual_size.cx >= PS5_DISPLAY_MIN_WIDTH && virtual_size.cy >= PS5_DISPLAY_MIN_HEIGHT)
++        {
++            if (!ps5_display_surface_create( instance, surface ))
++            {
++                MESSAGE( "win32u: assigned the console display to a %dx%d window surface\n",
++                         virtual_size.cx, virtual_size.cy );
++                return VK_SUCCESS;
++            }
++        }
++        else TRACE( "Keeping %dx%d helper surface headless\n", virtual_size.cx, virtual_size.cy );
++    }
 +#endif
      return instance->p_vkCreateHeadlessSurfaceEXT( instance->host.instance, &create_info, NULL, surface );
  }
  
-@@ -3101,6 +3311,14 @@ static void vulkan_init_once(void)
+@@ -3101,6 +3340,14 @@ static void vulkan_init_once(void)
      uint32_t count = 0;
      VkResult res;
  
@@ -2926,7 +3056,7 @@ index f07e78a..0e74fa4 100644
  #ifdef SONAME_LIBVULKAN
      vulkan_handle = dlopen( SONAME_LIBVULKAN, RTLD_NOW );
      if (!vulkan_handle) ERR( "Failed to load %s\n", SONAME_LIBVULKAN );
-@@ -3121,6 +3339,7 @@ static void vulkan_init_once(void)
+@@ -3121,6 +3368,7 @@ static void vulkan_init_once(void)
      LOAD_FUNCPTR( vkGetDeviceProcAddr );
      LOAD_FUNCPTR( vkGetInstanceProcAddr );
  #undef LOAD_FUNCPTR
@@ -2934,7 +3064,7 @@ index f07e78a..0e74fa4 100644
  
      driver_funcs = &lazydrv_funcs;
      vulkan_funcs.p_vkGetInstanceProcAddr = p_vkGetInstanceProcAddr;
-@@ -3144,6 +3363,9 @@ static void vulkan_init_once(void)
+@@ -3144,6 +3392,9 @@ static void vulkan_init_once(void)
      for (uint32_t i = 0; i < count; i++)
      {
          const char *extension = properties[i].extensionName;
@@ -2944,7 +3074,7 @@ index f07e78a..0e74fa4 100644
  #define USE_VK_EXT(x)                           \
          if (!strcmp( extension, #x ))           \
          {                                       \
-@@ -3182,6 +3404,12 @@ const struct vulkan_funcs *__wine_get_vulkan_driver( UINT version )
+@@ -3182,6 +3433,12 @@ const struct vulkan_funcs *__wine_get_vulkan_driver( UINT version )
          return NULL;
      }
  
@@ -2996,7 +3126,7 @@ index 2c92515..0d9ba60 100644
  
  static inline BOOL set_ntstatus( NTSTATUS status )
 diff --git a/dlls/win32u/winstation.c b/dlls/win32u/winstation.c
-index 3c55a80..db9de3d 100644
+index 3c55a80..c09146c 100644
 --- a/dlls/win32u/winstation.c
 +++ b/dlls/win32u/winstation.c
 @@ -802,6 +802,249 @@ static inline TEB64 *NtCurrentTeb64(void) { return NULL; }
@@ -3117,7 +3247,7 @@ index 3c55a80..db9de3d 100644
 +    guid.Data1 = now.u.LowPart;
 +    guid.Data2 = now.u.HighPart;
 +    guid.Data3 = 0x4000 | (GetCurrentProcessId() & 0xfff);
-+    memcpy( guid.Data4, "\x80WoWPS5", 8 );
++    memcpy( guid.Data4, "\x80PokeMMO", 8 );
 +
 +    inproc_load_graphics_driver( &guid );
 +
@@ -3412,7 +3542,7 @@ index ecc5bfc..5386d2b 100644
  
 diff --git a/dlls/xinput1_3/unixlib.c b/dlls/xinput1_3/unixlib.c
 new file mode 100644
-index 0000000..268c8ed
+index 0000000..b3a04c9
 --- /dev/null
 +++ b/dlls/xinput1_3/unixlib.c
 @@ -0,0 +1,52 @@
@@ -3438,9 +3568,9 @@ index 0000000..268c8ed
 +static NTSTATUS get_state(void *args)
 +{
 +#ifdef __PROSPERO__
-+    extern int wowps5_gamepad_state(unsigned, void *);
++    extern int pokemmops5_gamepad_state(unsigned, void *);
 +    struct ps5_state_params *p = args;
-+    p->result = wowps5_gamepad_state(p->index, p->state);
++    p->result = pokemmops5_gamepad_state(p->index, p->state);
 +    return STATUS_SUCCESS;
 +#else
 +    return STATUS_NOT_SUPPORTED;
@@ -3449,9 +3579,9 @@ index 0000000..268c8ed
 +static NTSTATUS vibrate(void *args)
 +{
 +#ifdef __PROSPERO__
-+    extern int wowps5_gamepad_vibrate(unsigned, unsigned, unsigned);
++    extern int pokemmops5_gamepad_vibrate(unsigned, unsigned, unsigned);
 +    struct ps5_vibrate_params *p = args;
-+    p->result = wowps5_gamepad_vibrate(p->index, p->left, p->right);
++    p->result = pokemmops5_gamepad_vibrate(p->index, p->left, p->right);
 +    return STATUS_SUCCESS;
 +#else
 +    return STATUS_NOT_SUPPORTED;
@@ -3460,8 +3590,8 @@ index 0000000..268c8ed
 +static NTSTATUS enable(void *args)
 +{
 +#ifdef __PROSPERO__
-+    extern void wowps5_gamepad_enable(int);
-+    wowps5_gamepad_enable(*(BOOL *)args);
++    extern void pokemmops5_gamepad_enable(int);
++    pokemmops5_gamepad_enable(*(BOOL *)args);
 +    return STATUS_SUCCESS;
 +#else
 +    return STATUS_NOT_SUPPORTED;

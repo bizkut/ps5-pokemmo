@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     DWORD code, i;
 
     atexit(at_exit);
-    printf("WoWPS5 C runtime test: argc=%d argv0=%s\n", argc, argv[0] ? argv[0] : "(null)");
+    printf("PokeMMO PS5 C runtime test: argc=%d argv0=%s\n", argc, argv[0] ? argv[0] : "(null)");
     check(argc >= 1 && argv[0] && argv[0][0], "startup code delivered argv");
 
     /* formatting */
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
 
     /* stdio on a file */
     check(GetTempPathA(sizeof temp, temp) > 0, "GetTempPath");
-    snprintf(path, sizeof path, "%swowps5-crt-test-%lu.bin", temp, GetCurrentProcessId());
+    snprintf(path, sizeof path, "%spokemmops5-crt-test-%lu.bin", temp, GetCurrentProcessId());
     for(i = 0; i < sizeof data; i++) data[i] = (unsigned char)(i * 7 + 3);
     file = fopen(path, "wb");
     check(file != NULL, "fopen for writing");
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
 
     check(getenv("WINDIR") != NULL || getenv("windir") != NULL, "getenv sees the Windows environment");
 
-    printf("WoWPS5 C runtime test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
+    printf("PokeMMO PS5 C runtime test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     fflush(stdout);
     return failures;
 }

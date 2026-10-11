@@ -2,13 +2,13 @@
  * on the PC (tools/wine-ps5/test-audio-host.sh). MIT license.
  *
  * It has the title's two entries (app/runtime/wine_audio.c). Grains are
- * appended to the file WOWPS5_AUDIO_CAPTURE names, as raw 16-bit stereo.
- * WOWPS5_AUDIO_HOST_PORT chooses how the stand-in behaves:
+ * appended to the file POKEMMOPS5_AUDIO_CAPTURE names, as raw 16-bit stereo.
+ * POKEMMOPS5_AUDIO_HOST_PORT chooses how the stand-in behaves:
  *   block    (default) returns when the grain before has "played", as the
  *            console's port does: one grain of real time per call
  *   noblock  returns at once: a port that does not pace its caller
  *   refuse   takes nothing and reports failure, at once
- * WOWPS5_AUDIO=0 refuses to open, as on the console.
+ * POKEMMOPS5_AUDIO=0 refuses to open, as on the console.
  */
 #include <pthread.h>
 #include <stdint.h>
@@ -29,10 +29,10 @@ static uint64_t now_ns(void)
     return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
 }
 
-__attribute__((visibility("hidden"))) int wowps5_audio_open(unsigned rate, unsigned grain)
+__attribute__((visibility("hidden"))) int pokemmops5_audio_open(unsigned rate, unsigned grain)
 {
-    const char *setting = getenv("WOWPS5_AUDIO"), *path = getenv("WOWPS5_AUDIO_CAPTURE"), *port = getenv("WOWPS5_AUDIO_HOST_PORT");
-    if (setting && setting[0] == '0') { fprintf(stderr, "[host audio] WOWPS5_AUDIO=0: no port\n"); return 0; }
+    const char *setting = getenv("POKEMMOPS5_AUDIO"), *path = getenv("POKEMMOPS5_AUDIO_CAPTURE"), *port = getenv("POKEMMOPS5_AUDIO_HOST_PORT");
+    if (setting && setting[0] == '0') { fprintf(stderr, "[host audio] POKEMMOPS5_AUDIO=0: no port\n"); return 0; }
     if (capture) return 1;
     if (!path || !(capture = fopen(path, "wb"))) { fprintf(stderr, "[host audio] no capture file\n"); return 0; }
     mode = port && !strcmp(port, "noblock") ? NOBLOCK : port && !strcmp(port, "refuse") ? REFUSE : BLOCK;
@@ -41,7 +41,7 @@ __attribute__((visibility("hidden"))) int wowps5_audio_open(unsigned rate, unsig
     return 1;
 }
 
-__attribute__((visibility("hidden"))) int wowps5_audio_output(const int16_t *frames)
+__attribute__((visibility("hidden"))) int pokemmops5_audio_output(const int16_t *frames)
 {
     if (!capture || mode == REFUSE) return -1;
     fwrite(frames, 2 * sizeof(int16_t), port_grain, capture);

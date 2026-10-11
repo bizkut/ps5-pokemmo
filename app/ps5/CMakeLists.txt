@@ -87,6 +87,7 @@ add_library(samples OBJECT
 	${ROOT}/runtime/wine_contract_probe.c
 	${ROOT}/runtime/mman_console_test.c
 	${ROOT}/runtime/wine_title.c
+	${ROOT}/runtime/pokemmo_config.c
 	${ROOT}/../build/ps5-wine/import-audit.c
 	${ROOT}/../build/ps5-wine/unixlibs.c
 	${base_sources}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a Windows program through Wine in the title, and keep what it said.
 
-  tools/wine-ps5/run-console.py /data/wowps5/test/program.exe [NAME=value | +argument ...] [--until REGEX] [--timeout S]
+  tools/wine-ps5/run-console.py /data/pokemmo/test/program.exe [NAME=value | +argument ...] [--until REGEX] [--timeout S]
 
 Writes the run request the title reads at start (app/runtime/wine_title.c),
 launches the title, and captures klog until a line matches --until, the title
@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location('run_title', TOOLS / 'run-title.py
 run_title = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_title)
 # Klog is shared with system services. A SceJSCd timeout must not close a
-# healthy WoW title. This runner polls the application's process lifecycle;
+# healthy PokeMMO title. This runner polls the application's process lifecycle;
 # retain global crash records as evidence, but do not end on another PID's log.
 run_title.CRASH = re.compile(r'(?!)')
 
@@ -46,8 +46,8 @@ def main():
     ftp.login(settings['ftp_user'], settings['ftp_password'])
     # The title ends itself a little before this script would ask the shell to:
     # a hung title that only the shell can close has frozen the shell before.
-    limit = [] if any(setting.startswith('WOWPS5_DEADLINE=') for setting in args.settings) \
-        else [f'WOWPS5_DEADLINE={max(10, int(args.timeout) - 25)}']
+    limit = [] if any(setting.startswith('POKEMMOPS5_DEADLINE=') for setting in args.settings) \
+        else [f'POKEMMOPS5_DEADLINE={max(10, int(args.timeout) - 25)}']
     request = '\n'.join([args.program, *args.settings, *limit]) + '\n'
     ftp.storbinary(f'STOR /data/homebrew/{title}/wine-run.txt', io.BytesIO(request.encode()))
     ftp.quit()

@@ -105,10 +105,10 @@ void InprocTest(void) {
     /* 4. the server reads and writes client memory through a real process handle */
     HANDLE process=OpenProcess(PROCESS_VM_READ|PROCESS_VM_WRITE|PROCESS_VM_OPERATION,FALSE,GetCurrentProcessId());
     check("OpenProcess self",process!=NULL,GetLastError());
-    static volatile DWORD source=0x57505335, target;
+    static volatile DWORD source=0x504d4d35, target;
     DWORD copy=0; SIZE_T count=0;
     BOOL ok=ReadProcessMemory(process,(void*)&source,&copy,sizeof(copy),&count);
-    check("ReadProcessMemory",ok && count==sizeof(copy) && copy==0x57505335,ok ? copy : GetLastError());
+    check("ReadProcessMemory",ok && count==sizeof(copy) && copy==0x504d4d35,ok ? copy : GetLastError());
     DWORD value=0x12345678; count=0;
     ok=WriteProcessMemory(process,(void*)&target,&value,sizeof(value),&count);
     check("WriteProcessMemory",ok && count==sizeof(value) && target==0x12345678,ok ? target : GetLastError());
@@ -142,7 +142,7 @@ void InprocTest(void) {
                             NULL,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,NULL);
     check("open temp directory",size && root!=INVALID_HANDLE_VALUE,GetLastError());
     UNICODE_STRING name; OBJECT_ATTRIBUTES attributes; IO_STATUS_BLOCK io; HANDLE file=NULL;
-    init_string(&name,L"wowps5-inproc-relative.tmp");
+    init_string(&name,L"pokemmops5-inproc-relative.tmp");
     InitializeObjectAttributes(&attributes,&name,OBJ_CASE_INSENSITIVE,root,NULL);
     NTSTATUS status=NtCreateFile(&file,GENERIC_READ|GENERIC_WRITE|DELETE|SYNCHRONIZE,&attributes,&io,NULL,FILE_ATTRIBUTE_NORMAL,
                                  0,FILE_OVERWRITE_IF,FILE_NON_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT|FILE_DELETE_ON_CLOSE,NULL,0);
@@ -174,7 +174,7 @@ void InprocTest(void) {
 
     /* 8. registry: a value written by the previous run must have been saved at its exit */
     HANDLE key=NULL; ULONG disposition=0;
-    init_string(&name,L"\\Registry\\Machine\\Software\\WoWPS5InprocTest");
+    init_string(&name,L"\\Registry\\Machine\\Software\\PokeMMOPS5InprocTest");
     InitializeObjectAttributes(&attributes,&name,OBJ_CASE_INSENSITIVE,NULL,NULL);
     status=NtCreateKey(&key,KEY_ALL_ACCESS,&attributes,0,NULL,0,&disposition);
     check("NtCreateKey",status==0,(ULONG)status);
@@ -197,6 +197,6 @@ void InprocTest(void) {
     spin_stop=0;
     thread=CreateThread(NULL,0,spinner,NULL,0,NULL);
     Sleep(20);
-    put(failures ? "WoWPS5 in-process server test FAIL\r\n" : "WoWPS5 in-process server test PASS\r\n");
+    put(failures ? "PokeMMO PS5 in-process server test FAIL\r\n" : "PokeMMO PS5 in-process server test PASS\r\n");
     ExitProcess(failures);
 }

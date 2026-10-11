@@ -369,18 +369,18 @@ void runMenu()
 
 } // namespace
 
-extern "C" void wowps5WineStartIfRequested(const char *requestPath);
-extern "C" bool wowps5WineWanted(const char *requestPath);
+extern "C" void pokemmops5WineStartIfRequested(const char *requestPath);
+extern "C" bool pokemmops5WineWanted(const char *requestPath);
 extern "C" int platform_keep_splash;
 
 int main()
 {
 	// A Windows program takes the splash away with its first frames
-	platform_keep_splash = wowps5WineWanted(PS5_APP_ROOT "/wine-run.txt");
-	// The log prefix stays what the tools and the earlier logs have, whatever the title is called
-	platform_init("WoWPS5 Probe");
+	platform_keep_splash = pokemmops5WineWanted(PS5_APP_ROOT "/wine-run.txt");
+	// Use the product title for the platform's visible log prefix
+	platform_init("PokeMMO PS5");
 	// A requested Windows program runs instead of the samples, and ends the title
-	wowps5WineStartIfRequested(PS5_APP_ROOT "/wine-run.txt");
+	pokemmops5WineStartIfRequested(PS5_APP_ROOT "/wine-run.txt");
 	// The samples report on std::cout and std::cerr: both reach klog
 	std::cout.rdbuf(std::cerr.rdbuf());
 	pad_open();

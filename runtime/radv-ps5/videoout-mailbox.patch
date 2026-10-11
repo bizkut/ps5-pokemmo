@@ -1,7 +1,7 @@
 --- a/src/vulkan/wsi/wsi_common_videoout.c
 +++ b/src/vulkan/wsi/wsi_common_videoout.c
-@@ -21,7 +21,11 @@
-  * screen keeps its last frame in between.
+@@ -36,7 +36,11 @@
+  * release their memory and the size is not asked for again.
   *
   * A present waits for the frame on a thread and flips it with
 - * sceVideoOutSubmitFlip at the next vblank; FIFO is the only present mode. A
@@ -13,7 +13,7 @@
   * title may ask VideoOut to show each flip for at least two or three vblanks
   * (wsi_videoout_set_flip_rate): at 119.88 Hz, three paces 40 fps evenly. An
   * acquire takes a buffer that is neither on screen, nor waiting for its flip
-@@ -196,6 +200,7 @@
+@@ -254,6 +258,7 @@
     struct wsi_videoout_swapchain *chain;
     uint32_t buffer;
     VkFence fence;
@@ -21,7 +21,7 @@
  };
  
  /* VideoOut, its framebuffers and what each holds, under lock. */
-@@ -226,6 +231,15 @@
+@@ -301,6 +306,15 @@
     thrd_t thread;
     struct wsi_videoout_present queue[VIDEOOUT_BUFFERS * 2];
     uint32_t queue_head, queue_count;
@@ -37,7 +37,7 @@
  };
  
  static struct wsi_videoout_output videoout_output = {
-@@ -439,6 +453,73 @@
+@@ -580,6 +594,74 @@
     return (int64_t)status[PS5_VIDEO_OUT_FLIP_STATUS_SHOWN_ARGUMENT];
  }
  
@@ -48,9 +48,9 @@
 +   struct wsi_videoout_output *out = &videoout_output;
 +   if (!getenv("PS5_VIDEOOUT_STATS"))
 +      return;
-+   char states[VIDEOOUT_BUFFERS * 24 + 1];
++   char states[VIDEOOUT_SETS * VIDEOOUT_BUFFERS * 24 + 1];
 +   int used = 0;
-+   for (uint32_t i = 0; i < VIDEOOUT_BUFFERS; i++)
++   for (uint32_t i = 0; i < out->set_count * VIDEOOUT_BUFFERS; i++)
 +      used += snprintf(states + used, sizeof(states) - used, " %u:%lld%s%s", i, (long long)out->buffer[i].argument,
 +                       out->buffer[i].held ? "H" : "", out->buffer[i].pending ? "P" : "");
 +   fprintf(stderr, "wsi/videoout: %s chain %p current %p queue %u flip %lld latest %d buffers%s\n", what, chain,
@@ -68,6 +68,7 @@
 +   if (result == 0) {
 +      out->flip_argument = argument;
 +      out->buffer[buffer].argument = argument;
++      out->swapchain_flip_ns = os_time_get_nano();
 +   } else {
 +      fprintf(stderr, "wsi/videoout: sceVideoOutSubmitFlip(%u) failed: 0x%08x\n", buffer, (unsigned)result);
 +   }
@@ -111,14 +112,15 @@
  /* The flip thread: each present's flip once its frame is done, in order. */
  static int
  videoout_flip_thread(void *data)
-@@ -453,20 +534,52 @@
+@@ -594,21 +676,51 @@
  
        struct wsi_videoout_swapchain *chain = present.chain;
        const struct wsi_device *wsi = chain->base.wsi;
 -      wsi->WaitForFences(chain->base.device, 1, &present.fence, VK_TRUE, UINT64_MAX);
 +      {
-+         /* a frame that takes over two seconds is said, once a wait */
-+         VkResult waited = wsi->WaitForFences(chain->base.device, 1, &present.fence, VK_TRUE, UINT64_C(2000000000));
++         /* Report a frame whose fence takes more than two seconds, then continue waiting. */
++         VkResult waited =
++            wsi->WaitForFences(chain->base.device, 1, &present.fence, VK_TRUE, UINT64_C(2000000000));
 +         if (waited == VK_TIMEOUT) {
 +            mtx_lock(&out->lock);
 +            videoout_trace("the flip thread has waited 2 s for a frame of", chain);
@@ -136,21 +138,20 @@
 -      if (result == 0) {
 -         out->flip_argument = argument;
 -         out->buffer[present.buffer].argument = argument;
-+      /* A frame that waited for a vblank is behind this one: never shown, its
-+       * buffer is free again. */
+-         out->swapchain_flip_ns = os_time_get_nano();
 +      if (out->latest_valid) {
 +         out->buffer[out->latest_buffer].pending = false;
 +         out->latest_valid = false;
 +         out->stat_replaced++;
 +      }
-+      /* PS5_VIDEOOUT_STATS=1: what became of the frames, every ten seconds. */
 +      out->stat_presents++;
 +      out->stat_mailbox += present.mailbox;
 +      if (out->stat_start == 0)
 +         out->stat_start = os_time_get_nano();
 +      else if (os_time_get_nano() - out->stat_start >= UINT64_C(10000000000)) {
 +         if (getenv("PS5_VIDEOOUT_STATS"))
-+            fprintf(stderr, "wsi/videoout: in 10 s: %u frames presented (%u MAILBOX), %u of them replaced before a refresh\n",
++            fprintf(stderr, "wsi/videoout: in 10 s: %u frames presented (%u MAILBOX), "
++                            "%u of them replaced before a refresh\n",
 +                    out->stat_presents, out->stat_mailbox, out->stat_replaced);
 +         out->stat_presents = out->stat_mailbox = out->stat_replaced = 0;
 +         out->stat_start = os_time_get_nano();
@@ -168,13 +169,14 @@
        } else {
 -         fprintf(stderr, "wsi/videoout: sceVideoOutSubmitFlip(%u) failed: 0x%08x\n", present.buffer,
 -                 (unsigned)result);
-+         videoout_submit_locked(present.buffer);
-       }
+-      }
 -      out->buffer[present.buffer].pending = false;
++         videoout_submit_locked(present.buffer);
++      }
        out->queue_head = (out->queue_head + 1) % ARRAY_SIZE(out->queue);
        out->queue_count--;
        chain->in_flight--;
-@@ -678,6 +791,13 @@
+@@ -940,6 +1052,13 @@
  
  /* --- Surfaces ------------------------------------------------------------ */
  
@@ -188,18 +190,17 @@
  static VkResult
  videoout_surface_get_support(VkIcdSurfaceBase *surface, struct wsi_device *wsi_device, uint32_t queueFamilyIndex,
                               VkBool32 *pSupported)
-@@ -694,7 +814,9 @@
-    VkSurfaceCapabilitiesKHR *const c = &caps->surfaceCapabilities;
+@@ -957,7 +1076,8 @@
     const VkSurfacePresentModeKHR *present_mode = vk_find_struct_const(info_next, SURFACE_PRESENT_MODE_KHR);
  
+    const VkExtent2D extent = videoout_surface_extent(icd_surface);
 -   c->minImageCount = 2;
-+   /* MAILBOX: one on screen, one flipped and yet to show, one finished and
-+    * waiting, one being drawn. */
++   /* MAILBOX can have one image on screen, one queued, one finished, and one being drawn. */
 +   c->minImageCount = present_mode && present_mode->presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? 4 : 2;
     c->maxImageCount = VIDEOOUT_BUFFERS;
-    c->currentExtent = videoout_extent;
-    c->minImageExtent = videoout_extent;
-@@ -728,16 +850,26 @@
+    /* The mode's size, and any smaller one, which VideoOut stretches to it. */
+    c->currentExtent = extent;
+@@ -997,16 +1117,26 @@
           break;
        }
        case VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_KHR: {
@@ -228,7 +229,7 @@
           }
           break;
        }
-@@ -791,6 +923,10 @@
+@@ -1060,6 +1190,10 @@
     VK_OUTARRAY_MAKE_TYPED(VkPresentModeKHR, out, pPresentModes, pPresentModeCount);
     vk_outarray_append_typed(VkPresentModeKHR, &out, mode)
        *mode = VK_PRESENT_MODE_FIFO_KHR;
@@ -239,7 +240,7 @@
     return vk_outarray_status(&out);
  }
  
-@@ -930,10 +1066,11 @@
+@@ -1418,10 +1552,11 @@
           return VK_NOT_READY;
        }
        if (os_time_get_nano() >= deadline) {
@@ -252,15 +253,15 @@
           /* A flip still to show frees one at a vblank. */
           const int handle = out->handle;
           mtx_unlock(&out->lock);
-@@ -988,6 +1125,7 @@
+@@ -1478,6 +1613,7 @@
        .chain = chain,
-       .buffer = image_index,
+       .buffer = buffer,
        .fence = chain->base.fences[image_index],
 +      .mailbox = chain->base.present_mode == VK_PRESENT_MODE_MAILBOX_KHR,
     };
     out->queue_count++;
-    out->buffer[image_index].pending = true;
-@@ -997,6 +1135,15 @@
+    out->buffer[buffer].pending = true;
+@@ -1487,6 +1623,15 @@
     return VK_SUCCESS;
  }
  
@@ -276,24 +277,27 @@
  static VkResult
  videoout_swapchain_wait_for_present(struct wsi_swapchain *wsi_chain, uint64_t present_id, uint64_t timeout)
  {
-@@ -1011,11 +1158,16 @@
+@@ -1501,6 +1646,7 @@
  
     /* Its flips use its fences: they go first. */
     mtx_lock(&out->lock);
 +   videoout_trace("destroying", chain);
     while (chain->in_flight)
        cnd_wait(&out->changed, &out->lock);
-    for (uint32_t i = 0; i < chain->base.image_count; i++)
+    for (uint32_t i = 0; i < chain->base.image_count; i++) {
+@@ -1508,6 +1654,11 @@
+       out->buffer[chain->first + i].image_refs--;
        if (chain->images[i].acquired)
-          out->buffer[i].held = false;
-+   if (out->latest_valid) {
+          out->buffer[chain->first + i].held = false;
++   }
++   if (out->latest_valid && out->latest_buffer >= chain->first &&
++       out->latest_buffer < chain->first + chain->base.image_count) {
 +      out->buffer[out->latest_buffer].pending = false;
 +      out->latest_valid = false;
-+   }
+    }
     if (out->current == chain)
        out->current = NULL;
-    cnd_broadcast(&out->changed);
-@@ -1059,7 +1211,13 @@
+@@ -1560,7 +1711,13 @@
     if (result != VK_SUCCESS)
        return result;
  
@@ -308,7 +312,7 @@
     const size_t size = sizeof(struct wsi_videoout_swapchain) + num_images * sizeof(struct wsi_image);
     struct wsi_videoout_swapchain *chain = vk_zalloc(pAllocator, size, 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
     if (chain == NULL)
-@@ -1080,7 +1238,9 @@
+@@ -1582,7 +1739,9 @@
     chain->base.release_images = videoout_swapchain_release_images;
     chain->base.queue_present = videoout_swapchain_queue_present;
     chain->base.wait_for_present = videoout_swapchain_wait_for_present;
@@ -317,9 +321,9 @@
 +                                                                                      : VK_PRESENT_MODE_FIFO_KHR;
 +   chain->base.set_present_mode = videoout_swapchain_set_present_mode;
     chain->base.image_count = num_images;
- 
-    for (uint32_t i = 0; i < num_images; i++) {
-@@ -1100,6 +1260,7 @@
+    chain->set = set;
+    chain->first = set * VIDEOOUT_BUFFERS;
+@@ -1614,6 +1773,7 @@
     if (out->current)
        out->current->retired = true;
     out->current = chain;

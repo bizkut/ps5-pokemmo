@@ -1,4 +1,4 @@
-// WoWPS5's bounded PE64 loading experiment. MIT license.
+// PokeMMO PS5's bounded PE64 loading experiment. MIT license.
 // This maps images and measures dependencies; it is not a Wine replacement.
 #pragma once
 #include <algorithm>
@@ -13,9 +13,9 @@
 #else
 #include <sys/mman.h>
 #endif
-extern "C" uint64_t wowps5CallWin64(void* entry);
+extern "C" uint64_t pokemmops5CallWin64(void* entry);
 
-namespace wowps5 {
+namespace pokemmops5 {
 struct Import { std::string module, symbol; uint32_t slot; };
 class PeImage {
     std::vector<uint8_t> file;
@@ -152,7 +152,7 @@ public:
     }
     template<class Resolver> void bindSmoke(Resolver resolve) {
         // Only the project's CRT-free test executable may be run here.
-        // WoW remains non-executable until a complete Windows runtime exists.
+        // Client images remain non-executable until a complete Windows runtime exists.
         if(!smokeExecutable || dirs[9][1] || dirs[13][1]) throw std::runtime_error("Smoke image is not executable or uses unsupported TLS/delayed imports");
         for(const auto& import:imports) {
             void* function=resolve(import.module,import.symbol);
@@ -163,7 +163,7 @@ public:
     }
     uint64_t runSmoke() const {
         if(!smokeExecutable || !smokeBound || !entryRva) throw std::runtime_error("Smoke execution prerequisites incomplete");
-        return wowps5CallWin64(mapped+entryRva);
+        return pokemmops5CallWin64(mapped+entryRva);
     }
 };
 }

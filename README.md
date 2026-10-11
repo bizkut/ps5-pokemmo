@@ -1,164 +1,198 @@
-# WoW Forever on PS5
+# PokeMMO on PS5
 
-**World of Warcraft: Forever, the Windows client, running natively on a jailbroken PlayStation 5.**
-No streaming and no Linux: the game's own `WowB.exe` runs inside one PS5 app, on Wine, with its DirectX 12 translated to the console's GPU.
+The Windows x86-64 PokeMMO client running locally in a single PS5 homebrew title through Wine. Rendering uses Mesa's Windows WGL frontend and Zink, then Wine Vulkan and the title's linked PS5 RADV driver. No streaming and no Linux guest.
 
-![Playing on a PS5 at 84 frames a second](docs/images/gameplay.jpg)
+## Status
 
-| | |
+| Surface | Observed result |
 |---|---|
-| ![Entering Durotar](docs/images/durotar.jpg) | ![The title screen](docs/images/title.jpg) |
+| Client startup | PokeMMO revision `32920` started from `C:\Games\PokeMMO`; GraalVM 25 initialized and persisted `config/main.properties` |
+| Graphics | Application-local Mesa `opengl32.dll` loaded; PokeMMO reported OpenGL 4.6 Compatibility Profile on Zink → Vulkan 1.4 → RADV NAVI21 |
+| Presentation | Visible PokeMMO UI; game viewport and VideoOut buffers are `1920×1080`, independently of the TV's output mode |
+| Input | Native cursor presentation verified; current right-stick/tap/D-pad changes pass host checks, but final D-pad/touchpad UI acceptance remains pending |
+| Audio | The PS5 audio port opened at 48 kHz stereo and Wine's event-driven mixer started |
+| Network | The client loaded its Main Feed from mirror 0 |
+| ROMs | Startup discovered staged ROM files with empty `client.roms.*` settings and loaded White, Emerald, FireRed, SoulSilver and Platinum |
+| Known failure | The filesystem Browse button crashed the client; use the ROM-directory setup below instead |
+| Not yet qualified | Final input UI acceptance, login/gameplay correctness, updates initiated by the client, suspend/resume, and long sessions |
 
-*Captured from a PS5 over Remote Play. The green text in the corner was a debug label used for the recording; it is not part of the release.*
+PokeMMO, ROMs, credentials, and account data are not included. Evidence covers startup, 1080p presentation, the earlier confirmed pointer alignment, and the observed ROM loading—not general gameplay correctness; see [technical notes](docs/technical-notes.md).
 
-| | |
-|---|---|
-| **Works** | Login, character select, playing in the world, sound, controller (the game's own console UI), touchpad as a mouse, USB keyboard and mouse, an on-screen keyboard, 76 to 99 frames a second in the world with vertical sync off |
-| **Tested on** | One console: PS5 firmware 8.20, etaHEN with kstuff, ShadowMount+ 1.6 beta 16; client builds 1.60.1.70205 and 1.60.1.70235 (`_classic_beta_`) |
-| **Not included** | The game. You copy your own installation, and you sign in with your own account on the console |
+## Install
 
-This is a hobby project. It is not affiliated with or endorsed by Blizzard Entertainment or Sony. Use it with a game you own, at your own risk.
+### Source releases are not installable bundles
 
----
+For every newly pushed tag, the hosted workflow runs the offline packaging regressions, rejects recognized official PokeMMO client content in the checkout, and creates a GitHub release with generated notes. Its only artifacts are GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives. It does not build or upload a PS5 title, Wine runtime, or installer-ready package; those source archives cannot be installed on a PS5.
 
-## Install it (about 15 minutes of your time, plus the copy)
+An installable `PokeMMO-PS5.zip`, when one is provided, is a separate maintainer artifact produced after the built title and runtime have been qualified on a PS5; it incorporates the sanitized Wine runtime/prefix retrieved from that console through `tools/make-bundle.py`. Hosted Actions do not produce it, and it is not promised for every tag. Unpack that bundle before following the installation steps below.
 
-### What you need
+### Download the PokeMMO client yourself
 
-1. **A jailbroken PS5** with a homebrew enabler running (tested: etaHEN with kstuff), and:
-   - its **FTP server** on (port 2121 is the default of the common payloads),
-   - **ShadowMount** (or another way to register an app folder from `/data/homebrew`),
-   - about **70 GB free** on the internal drive.
-2. **A PC on the same network** with Python 3 (Linux, macOS or Windows).
-3. **Your own World of Warcraft installation** with the `_classic_beta_` folder (WoW: Forever) in it.
-4. The console's address on your network (PS5: Settings, Network, View Connection Status).
+Download the official client from **[PokeMMO's portable download page](https://pokemmo.com/en/downloads/portable/)** and extract it on your computer. This separate download is required for every installation. Use the extracted folder containing `PokeMMO.exe` and `data/` as the installer's `--client` directory.
 
-### Steps
+**The official PokeMMO binaries are not included in this repository, the automatic source releases, or an installable `PokeMMO-PS5.zip`.** Keep your downloaded client outside the repository; do not commit it or attach it to a GitHub release. The installer reads that separately downloaded client from your computer and copies it to your PS5.
 
-1. Download **`WoWForever-PS5.zip`** from the [latest release](../../releases/latest) and unpack it.
-2. Turn the console on and run your jailbreak, so that FTP and ShadowMount are up.
-3. Copy the files to the console, either way:
+### Requirements
 
-   **A. With the installer** (it copies everything, your game included, and can be re-run if interrupted):
+- A jailbroken PS5 with an FTP server (normally port 2121) and ShadowMount or equivalent `/data/homebrew` registration.
+- Python 3 on a computer on the same network.
+- An unpacked installable `PokeMMO-PS5.zip` containing `title/PPSA99221`, `runtime/pokemmo`, `zink`, and `install.py`. A GitHub **Source code** archive does not satisfy this requirement.
+- Your separately downloaded and extracted official portable PokeMMO client directory containing `PokeMMO.exe` and `data/`.
+- Your legally obtained ROMs for the regions you intend to play. PokeMMO requires a supported Pokémon Black or White ROM before gameplay.
 
-   ```sh
-   cd WoWForever-PS5
-   python3 install.py --host 192.168.1.50 --wow "/path/to/World of Warcraft"
-   ```
-
-   `--host` is the console's address; `--wow` is your game folder, the one that holds `_classic_beta_` and `Data`. Nothing needs editing.
-
-   **B. By hand**, with any FTP program (FileZilla, WinSCP) connected to the console on port 2121:
-
-   | Copy this | To this place on the PS5 |
-   |---|---|
-   | the folder `title/PPSA99220` | `/data/homebrew/PPSA99220` |
-   | the folder `runtime/wowps5/wine` | `/data/wowps5/wine` |
-   | the file `runtime/wowps5/ca-certificates.crt` | `/data/wowps5/ca-certificates.crt` |
-   | the three `.reg` files in `runtime/wowps5/prefix` | `/data/wowps5/prefix/` |
-   | everything inside `runtime/wowps5/prefix/drive_c` | `/data/wowps5/prefix/dosdevices/c:/` (the last folder is named `c:`, with the colon) |
-   | your game's `Data` folder and `_classic_beta_` folder | `/data/wowps5/prefix/dosdevices/c:/Games/World of Warcraft/` |
-
-   From `_classic_beta_`, leave out `WTF`, `Interface`, `Cache`, `Logs` and `Errors`: PC settings do not suit the console, and the game makes these again.
-
-4. On the console, **WoW Forever** appears on the home screen within a minute. Start it.
-5. Sign in. Press **L3 + R3** (click both sticks) to type with the on-screen keyboard.
-
-Your installation on the PC is only read. The game is about 64 GiB, so the copy takes a while over FTP.
-
-The first start, and the first visit to each place, are slower than later ones: the graphics driver compiles the game's shaders once and keeps them.
-
-### When the game updates
-
-The console cannot update the game itself. Let Battle.net update it on the PC, close the game on the console, then run the installer again with `--skip-app`:
+With the target title closed:
 
 ```sh
-python3 install.py --host 192.168.1.50 --wow "/path/to/World of Warcraft" --skip-app
+python3 install.py \
+  --host 192.168.1.50 \
+  --client "/path/to/PokeMMO-Client"
 ```
 
-It sends only the files the update changed (a few GiB, not the whole game). If your first copy was made by hand or with release 0.1.0, add `--since "YYYY-MM-DD HH:MM"` with the time of that copy, once: an update changes files without changing their size, and the installer has to know which are newer. By hand, copy `Data` and `_classic_beta_` again, replacing what is there.
+The installer is resumable. It copies the Wine title/runtime, the Windows portable client, and the two WGL/Zink DLLs. Native Linux/macOS binaries under the client's top-level `bin/` directory and `PokeMMO.sh` are intentionally excluded. Existing files with matching size and unchanged source metadata are skipped.
 
-A new version of this port is installed the same way as the first: unpack the new release and run the installer (or copy `title/PPSA99220` again). Your game, settings and shaders on the console stay.
+The installed layout is:
 
----
-
-## Playing
-
-### Controls
-
-| Input | What it does |
+| Local bundle/client | PS5 destination |
 |---|---|
-| Controller | The game's own controller support and console UI |
-| Touchpad | Moves the mouse pointer; pressing it is a left click |
-| **L3 + R3** (click both sticks together) | Opens the PS5 on-screen keyboard. What you type goes into the text box that has focus (login, search, chat), when you confirm |
-| **L3 + R3 again**, before pressing anything else | Opens the keyboard with what you just typed, to fix a mistake: confirming replaces the old text. Confirming an empty keyboard just deletes it |
-| USB keyboard and mouse | Work as on a PC |
+| `title/PPSA99221` | `/data/homebrew/PPSA99221` |
+| `runtime/pokemmo/wine` | `/data/pokemmo/wine` |
+| `runtime/pokemmo/prefix` | `/data/pokemmo/prefix` (`drive_c` becomes `dosdevices/c:`) |
+| portable Windows client | `/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO` |
+| `zink/opengl32.dll`, `zink/libgallium_wgl.dll` | beside `PokeMMO.exe` |
 
-### Frame rate above 60 (the uncapped mode)
+After ShadowMount registers the folder, launch **PokeMMO PS5** from the home screen.
 
-By default a PS5 app gets exactly as many frames as the TV shows. This port adds a second way of presenting to the graphics driver, where the game draws as fast as it can and the screen shows the newest finished frame at each refresh, with no tearing.
+The selection and launch backgrounds use the supplied sky artwork at 3840×2160; the tile icon is unchanged. Source images and conversion details are in [the title artwork notes](app/README.md#ps5-menu-artwork), and provenance, permission, and attribution limits are in [the artwork notice](ARTWORK.md).
 
-To use it, in the game: **System, Graphics, turn Vertical Sync off**, and set **Max Foreground FPS** to what you like (or off). The game's frame counter then goes above 60 and input feels more direct; the TV still shows its own refresh rate. Turning Vertical Sync back on returns to the default.
+### ROMs without the file browser
 
-### Good to know
+For client revision `32920`, simply placing supported uncompressed ROMs in the client's `roms/` folder and restarting is sufficient in the observed console run. The client found six candidates and loaded the supported regions while all `client.roms.*` settings remained empty.
 
-- **Leaving the game:** use the game's own Exit Game. It takes about ten seconds to close.
-- **Settings and add-on data** are saved on the console when you leave the game normally.
-- **A "system software" message** from the PS5 while the game runs can be dismissed.
-- **No voice chat.**
-- **Advanced settings** go in `/data/wowps5/launch.txt` on the console, one `NAME=value` a line. For example `PS5_VIDEOOUT_MAILBOX=0` removes the uncapped mode, and `VKD3D_CONFIG=` turns off single-queue mode (the default is `single_queue`). Delete the file to return to the defaults.
+1. Close PokeMMO before staging files.
+2. Put your supported `.nds` and `.gba` ROMs in the client's `roms/` directory.
+3. Start PokeMMO normally—do not use Browse.
 
-### If something goes wrong
+The reference port instead supplies explicit paths using the following settings. They are available as an optional configuration method; set only entries for files you have, without replacing the full client configuration.
 
-| What you see | What to do |
-|---|---|
-| The installer says there is no FTP server | Check the console's address, that the jailbreak ran, and that its FTP server is on port 2121 (`--port` to change it) |
-| No "WoW Forever" on the home screen | ShadowMount must be loaded; it looks in `/data/homebrew`. Removing the tile and letting it be added again also refreshes its name and pictures |
-| A black screen for a long time on the very first start | Wait: the first start compiles shaders. Later starts are much faster |
-| The game closes on start | Make sure the copy finished (run the installer again; it only sends what is missing) and that the client is the build above |
-| The game has updated on your PC | The console's copy needs the same update: see [When the game updates](#when-the-game-updates) |
-| The picture freezes in the world (sound may carry on) | Close the game from the PS button and start it again. Release 0.1.1 fixes two crashes of this kind that came with client build 70235; a crash still shows as a frozen picture because the game's crash window is not visible on the console |
-| Lua warnings about SavedVariables, or settings that do not stick | Update to the latest release: this was a limit of 250 open files that the port now stays under |
+| ROM | Property | Example relative path |
+|---|---|---|
+| Black **or White**, version 1 (required) | `client.roms.nds` | `roms/pokemon_black.nds` |
+| FireRed | `client.roms.fr` | `roms/pokemon_firered.gba` |
+| Emerald | `client.roms.em` | `roms/pokemon_emerald.gba` |
+| Platinum | `client.roms.nds2` | `roms/pokemon_platinum.nds` |
+| HeartGold **or SoulSilver** | `client.roms.nds3` | `roms/pokemon_heartgold.nds` |
 
----
+Substitute the actual filenames if using White or SoulSilver. The reference does not establish a mapping for `client.roms.nds4`; do not guess one.
 
-## How it works, in one paragraph
+On the PS5, these locations are:
 
-A PS5 app cannot start a second program, has 16 KiB memory pages, may not read its own code, and gets about 250 open files. So Wine 11.19 runs as **one process** inside the app, with its server on a thread and its Unix side linked into the app's executable; a memory layer gives Windows programs the 4 KiB pages and executable memory they expect; **vkd3d-proton** turns the game's DirectX 12 into Vulkan; and **RADV** (Mesa's driver, in Mihawk's PS5 port) drives the console's GPU. Every change to Wine is one patch against a pinned revision, and each exists for something measured on the console: see [docs/technical-notes.md](docs/technical-notes.md).
+- ROMs: `/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/roms/`
+- Configuration: `/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/config/main.properties`
 
-## What is in this repository
+The installer copies ROMs placed in your local portable client's `roms/` folder. If supplying explicit paths, configure local `config/main.properties` before staging or edit the installed file over FTP with the title closed. Do not replace the whole configuration with the handheld port's file: it selects handheld-specific graphics, themes and mods.
 
-| Here | What |
-|---|---|
-| `app/` | The PS5 app: the platform side (`app/ps5`), and what it does around Wine (`app/runtime`: start-up, files, sound, controller, on-screen keyboard) |
-| `runtime/wine-ps5/` | Every change to Wine as one patch, and the memory layer |
-| `runtime/radv-ps5/` | The uncapped present mode, as a patch to the graphics driver's display code |
-| `tools/` | Build, install, run and test scripts; the Windows test programs |
-| `docs/` | [Technical notes](docs/technical-notes.md): what was measured on the console and why each change exists |
+The PS5 launcher preserves explicit ROM entries while enforcing its graphics settings; this was exercised on the host. Automatic discovery and the listed ROM loading are now observed on PS5, but other variants, archives, and full gameplay remain outside that receipt.
 
-Not here: the game, anything of an account, and the third-party source (`vendor/`, fetched at the revisions pinned in `dependencies.json`).
+### Client updates
 
-## Building it yourself
-
-The release bundle is the supported way to install. Building from source works in the author's tree and has **not yet been reproduced from a fresh clone**, so expect to read the scripts:
+Update the portable client on the computer, close the PS5 title, then rerun:
 
 ```sh
-python3 tools/bootstrap.py                 # pinned sources and host packages into vendor/ and .deps/
-cp .env.example .env                       # then set WOW_INSTALL; console settings go in vendor/PS5_Vulkan/.env
-bash tools/wine-ps5/build-radv.sh          # the graphics driver with this project's patch
-bash tools/wine-ps5/build-console.sh       # Wine's Unix side, the app, and its deployment to the console
-python3 tools/wine-ps5/stage-console.py --all --system32   # Wine's Windows side to the console
-python3 tools/wine-ps5/stage-game.py       # your game to the console
+python3 install.py --host 192.168.1.50 --client "/path/to/PokeMMO-Client" --skip-app
 ```
 
-The host needs Linux with LLVM 23, mingw-w64, meson, ninja and cmake. `runtime/wine-ps5/README.md` describes the Wine patch; `tools/make-bundle.py` makes the release bundle from a console where everything works.
+The transfer record is local and excludes credentials. If the initial client copy was made outside this installer, add `--since "YYYY-MM-DD HH:MM"` once so same-size changed files are resent.
+
+## Input
+
+| Input | Behavior |
+|---|---|
+| Left stick | Normal gamepad movement |
+| D-pad | Movement through left-stick axes when the physical left stick is centered; a deflected stick takes priority |
+| Cross/X | Normal gamepad A button; does not also click the mouse |
+| Right stick | Always moves the native cursor, with a dead zone and fine-control response |
+| Touchpad movement | Moves the same cursor |
+| Short one-finger touchpad tap | Left click without mechanically pressing the touchpad |
+| Physical touchpad press | Single-finger press anywhere is left click; two-finger press is secondary click |
+| R3 alone | Normal gamepad stick-click button; **no mode toggle** |
+| L3 + R3 | Opens the PS5 on-screen keyboard for the focused Windows text field |
+| USB keyboard and mouse | Windows keyboard/mouse input using the same pointer |
+
+There is no gamepad/cursor mode switch. Right-stick axes are reserved for the mouse; left-stick movement, D-pad directions, Cross and the other gamepad controls remain available to PokeMMO. D-pad input is not duplicated as keyboard or mouse events.
+
+The cursor auto-hides after **3 seconds without pointer activity**. Pointer movement, a mouse click or scrolling makes it visible again. It stays visible while a mouse button is held; ordinary gamepad movement/buttons do not keep it on screen. A physical touchpad press, dragging, a long touch or a multi-finger gesture does not also generate a tap click.
+
+Advanced runtime settings are `NAME=value` lines in `/data/pokemmo/launch.txt`. Diagnostic variables use the `POKEMMOPS5_` prefix. Delete `launch.txt` to restore defaults.
+
+Normal game launches set `1920×1080`, disable maximization and leave PokeMMO's software cursor off to avoid a second pointer. The VideoOut cursor uses the active framebuffer's viewport, not the advertised 4K display size.
+
+## Architecture
+
+1. `PokeMMO.exe` runs through Wine 11.19 in the title process. Wine's server is a thread because a PS5 title cannot create the normal Wine process tree.
+2. `WINEDLLOVERRIDES=opengl32=n,b;vulkan-1=b` selects the application-local Mesa WGL DLL and Wine's Vulkan loader.
+3. `libgallium_wgl.dll` selects Gallium Zink. Zink emits Vulkan through Wine's `vulkan-1.dll`/`winevulkan` bridge.
+4. Wine's PS5 `win32u` path creates the display surface; linked RADV drives the GPU and presents through VideoOut.
+5. Native title bridges provide files, DNS/IPv4, TLS entropy, audio, XInput, keyboard/mouse, and the on-screen keyboard.
+
+The handheld PortMaster project was used only as behavioral reference for the portable client layout and its OpenGL requirement. No code, assets, themes, configuration, or scripts were copied from it.
+
+## Build from source
+
+Third-party revisions are pinned in `dependencies.json`; generated sources and client data stay under ignored directories.
+`PS5_Mesa` pins the Windows WGL/Zink build; `PS5_Mesa_RADV` pins the separate Mesa revision consumed by PS5 Vulkan's RADV archive.
+
+```sh
+python3 tools/bootstrap.py
+cp .env.example .env                 # set POKEMMO_CLIENT
+bash tools/wine-ps5/bootstrap-wine.sh
+bash tools/wine-ps5/build-zink.sh
+bash tools/wine-ps5/build-console.sh --no-deploy
+python3 tools/wine-ps5/stage-game.py --dry-run
+```
+
+`bootstrap-wine.sh` prepares Wine host tools and its PS5 cross tree. `build-console.sh` builds the project's RADV cursor/mailbox patch stack before linking the title, as well as WGL/Zink and TLS. `build-zink.sh` emits exactly `opengl32.dll` and `libgallium_wgl.dll`; it does not stage a Windows Vulkan loader or ICD. The verified macOS build used matching LLVM/LLD and SPIR-V host tools at version 23, llvm-mingw, Meson/Ninja, modern Bison/Flex/GNU Make, and `PS5_CLANG` pointing to LLVM 19 for the title's available x86-64 builtins. See the exact environment in the technical notes.
+
+After building the title and runtime, qualifying them on a console, and closing the title, create the installable bundle with:
+
+```sh
+python3 tools/make-bundle.py
+```
+
+This reads and sanitizes the console-derived Wine runtime/prefix, combines it with the built title and WGL/Zink DLLs, and writes `build/release/PokeMMO-PS5.zip`. It excludes the official client and private session data, and copies `tools/install.py` into the bundle as `install.py`. The included installer uploads that bundle plus the user's separately downloaded client. This manual, console-qualified path is distinct from the source-only tag workflow described above.
+
+Release inputs must exclude `PokeMMO.exe`, `PokeMMO-Debug.exe`, native Linux/macOS client binaries, older client JARs, downloaded client archives, and installed `Games` content. ROMs, private runtime prefixes, logs, and credentials must not be committed either.
+
+### Trigger a GitHub source release
+
+Commit and push the prepared source, then create and push a new tag containing `.github/workflows/release.yml`:
+
+```sh
+git add -A
+git commit -m "Prepare PokeMMO PS5 public source"
+git push -u origin main
+git tag -a v0.1.0 -m "PokeMMO PS5 v0.1.0"
+git push origin v0.1.0
+```
+
+Use a new version tag for each release. A `main` push alone does not trigger this workflow, and there is no manual **Run workflow** button. Follow **Source release** in the repository's [Actions tab](https://github.com/bizkut/ps5-pokemmo/actions); after its checks pass, the release appears under [Releases](https://github.com/bizkut/ps5-pokemmo/releases). Reruns preserve an existing release rather than replacing its contents.
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `app/` | PS5 title, Wine host integration, controller/audio/OSK bridges, and diagnostic probe |
+| `runtime/wine-ps5/` | Pinned Wine patch, PS5 memory layer, and TLS compatibility |
+| `runtime/radv-ps5/` | PS5 RADV presentation patch inherited from the template |
+| `tools/wine-ps5/` | Wine, Zink, TLS, staging, console, and input tools |
+| `ARTWORK.md` | Artwork provenance, redistribution confirmation, and attribution/licence limits |
+| `docs/technical-notes.md` | Architecture, qualification receipt, limits, and diagnosed failures |
 
 ## Credits and licences
 
-- [Wine](https://www.winehq.org/) (LGPL-2.1-or-later); the patch here is under the same licence.
-- [vkd3d-proton](https://github.com/HansKristian-Work/vkd3d-proton) (LGPL-2.1).
-- [Mesa](https://www.mesa3d.org/) RADV (MIT) in [Mihawk's PS5 port](https://github.com/mihawk-99/PS5_Mesa), and his [PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan).
-- The [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk).
-- The licence texts of everything the app contains are in the bundle under `title/PPSA99220/licenses/`.
+- [WoWPS5](https://github.com/BeLikeBrett/WoWPS5), used as the title/Wine template.
+- [Wine](https://www.winehq.org/) (LGPL-2.1-or-later).
+- [Mesa](https://www.mesa3d.org/) WGL, Zink and RADV (MIT), including Mihawk's PS5 Mesa/Vulkan work.
+- [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk).
+- [PokeMMO Port for PortMaster](https://github.com/lowlevel-1989/pokemmo-port), behavioral reference only.
 
-World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc. PlayStation and PS5 are trademarks of Sony Interactive Entertainment Inc. The pictures used for the app's tile and background are fan-made from publicly available artwork.
+Project-owned code, scripts, and documentation are covered by the root [MIT licence](LICENSE); included menu, icon, and cursor artwork is not. See the [artwork notice](ARTWORK.md) for its provenance, redistribution confirmation, and unresolved attribution/licence details. A built installable bundle carries component notices under `title/PPSA99221/licenses/`. This project is independent and is not affiliated with PokeMMO, the Pokémon rights holders, or Sony Interactive Entertainment.

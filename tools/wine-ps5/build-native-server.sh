@@ -85,6 +85,7 @@ else
     PLATFORM_LIBS="-Wl,-T,${RUNTIME}/ntdll-eh-frame.ld -Wl,--exclude-libs,libunwind.a -lunwind"
     SERVER_MAKE_ARGS=()
 fi
+READELF=${READELF:-$(command -v readelf || command -v llvm-readelf)}
 
 SERVER_OBJ="${BUILD}/server/wineserver-inproc.o"
 # EXTRA_NTDLL_PLATFORM_LIBS: more objects for ntdll.so, e.g. the memory layer
@@ -135,7 +136,7 @@ echo "wineserver-inproc.o: $(wc -l < "${LOGDIR}/native-server-imports-${tag}.txt
 # An import that an ntdll Unix object defines would silently bind to ntdll's
 # function instead of libc's once both are in one image.
 ntdll_defs="${LOGDIR}/native-server-ntdll-globals-${tag}.txt"
-"${NM}" -g --defined-only "${BUILD}"/dlls/ntdll/unix/*.o 2>/dev/null | awk 'NF>=3{print $NF}' | LC_ALL=C sort -u > "${ntdll_defs}"
+{ "${NM}" -g --defined-only "${BUILD}"/dlls/ntdll/unix/*.o 2>/dev/null || true; } | awk 'NF>=3{print $NF}' | LC_ALL=C sort -u > "${ntdll_defs}"
 if [[ -s "${ntdll_defs}" ]]; then
     # (the memory layer's calls, ps5w_*, are meant to bind there: the server declares its sections to it)
     clash="$(LC_ALL=C comm -12 "${LOGDIR}/native-server-imports-${tag}.txt" "${ntdll_defs}" | grep -v '^ps5w_' | tr '\n' ' ' || true)"
@@ -222,9 +223,9 @@ if (( ! host )); then
     report="${LOGDIR}/native-server-elf-report.txt"
     {
         echo "## files"; file "${SERVER_OBJ}" "${so}"; sha256sum "${SERVER_OBJ}" "${so}"
-        echo "## ntdll.so dynamic section"; readelf -dW "${so}"
+        echo "## ntdll.so dynamic section"; "${READELF}" -dW "${so}"
         echo "## ntdll.so undefined dynamic symbols (resolved from NEEDED sprx at load)"
-        readelf --dyn-syms -W "${so}" | awk '$7=="UND" && $8!="" {print $8}' | sort
+        "${READELF}" --dyn-syms -W "${so}" | awk '$7=="UND" && $8!="" {print $8}' | sort
         echo "## SDK libc.a syscalls.o (raw syscall) symbols that ntdll's own Unix objects import"
         echo "## (client-side hazards, not the server's: see HANDOFF.md)"
         "${NM}" -u "${BUILD}"/dlls/ntdll/unix/*.o | awk 'NF==2{print $2}' | LC_ALL=C sort -u \

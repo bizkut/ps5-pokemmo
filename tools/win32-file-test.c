@@ -19,7 +19,7 @@ static void check(BOOL passed, const char* what) {
 int main(int argc, char** argv) {
     char directory[MAX_PATH], path[MAX_PATH], other[MAX_PATH];
     if (argc > 1) strcpy(directory, argv[1]); else GetTempPathA(MAX_PATH, directory);
-    snprintf(path, sizeof(path), "%s\\wowps5-file-test.bin", directory); snprintf(other, sizeof(other), "%s\\wowps5-file-test.new", directory);
+    snprintf(path, sizeof(path), "%s\\pokemmops5-file-test.bin", directory); snprintf(other, sizeof(other), "%s\\pokemmops5-file-test.new", directory);
     printf("in %s\n", directory);
     static char block[1 << 16]; memset(block, 0x5a, sizeof(block)); DWORD done = 0; OVERLAPPED at;
 
@@ -90,13 +90,13 @@ int main(int argc, char** argv) {
 
     char pattern[MAX_PATH]; snprintf(pattern, sizeof(pattern), "%s\\*", directory); WIN32_FIND_DATAA found; int entries = 0, seen = 0;
     begin(); HANDLE search = FindFirstFileA(pattern, &found);
-    if (search != INVALID_HANDLE_VALUE) { do { entries++; if (!strcmp(found.cFileName, "wowps5-file-test.bin")) seen = 1; } while (FindNextFileA(search, &found)); FindClose(search); }
+    if (search != INVALID_HANDLE_VALUE) { do { entries++; if (!strcmp(found.cFileName, "pokemmops5-file-test.bin")) seen = 1; } while (FindNextFileA(search, &found)); FindClose(search); }
     printf("     %d directory entries\n", entries);
     check(seen, "the directory listing has the file");
     begin(); HANDLE held = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
     ok = held != INVALID_HANDLE_VALUE && DeleteFileA(path); if (held != INVALID_HANDLE_VALUE) CloseHandle(held);
     check(ok && GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES, "delete while open, gone after the close");
     ULARGE_INTEGER available; begin(); check(GetDiskFreeSpaceExA(directory, &available, NULL, NULL), "GetDiskFreeSpaceEx");
-    printf(failures ? "WoWPS5 file test FAIL (%d)\n" : "WoWPS5 file test PASS\n", failures);
+    printf(failures ? "PokeMMO PS5 file test FAIL (%d)\n" : "PokeMMO PS5 file test PASS\n", failures);
     return failures;
 }

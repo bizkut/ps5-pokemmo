@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise actual relocated Windows code and reject malformed PE fixtures."""
 import json
+import os
+import shutil
 import struct
 import subprocess
 from pathlib import Path
@@ -8,9 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/windows'
 WORK = ROOT / 'work/pe-loader-check'
+BUILD.mkdir(parents=True, exist_ok=True)
 WORK.mkdir(parents=True, exist_ok=True)
-subprocess.run(['bash', str(ROOT / 'tools/build-pe-smoke.sh')], check=True)
-subprocess.run(['g++', '-std=c++20', '-O2', '-Wall', '-Wextra', '-DWOWPS5_PE_HOST_TEST',
+mingw = os.environ.get('MINGW_CC') or shutil.which('x86_64-w64-mingw32-gcc') or shutil.which('x86_64-w64-mingw32-clang')
+if not mingw:
+    raise SystemExit('missing x86_64-w64-mingw32 compiler (or set MINGW_CC)')
+subprocess.run([mingw, '-O2', '-nostdlib', '-fno-stack-protector',
+                '-Wl,--entry,PokeMMOPS5Smoke', '-Wl,--enable-reloc-section',
+                str(ROOT / 'tools/pe-smoke.c'), '-lkernel32', '-o', str(BUILD / 'pe-smoke.exe')], check=True)
+subprocess.run(['g++', '-std=c++20', '-O2', '-Wall', '-Wextra', '-DPOKEMMOPS5_PE_HOST_TEST',
                 str(ROOT / 'app/runtime/pe_probe.cpp'), '-o', str(BUILD / 'pe-host-test')], check=True)
 original = (BUILD / 'pe-smoke.exe').read_bytes()
 pe = struct.unpack_from('<I', original, 0x3c)[0]

@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #ifndef __PROSPERO__
-bool wowps5WineContractProbe(const char* reportPath) { (void)reportPath; return true; }
+bool pokemmops5WineContractProbe(const char* reportPath) { (void)reportPath; return true; }
 #else
 #include <cpuid.h>
 #include <dirent.h>
@@ -45,45 +45,45 @@ struct VirtualQueryInfo {
 int32_t sceKernelVirtualQuery(const void*, int, struct VirtualQueryInfo*, size_t);
 
 // Leaf routines whose one faulting instruction the handler steps past: each
-// returns 0, or 1 through wowps5GuardLanding when its site faulted.
-int wowps5GuardLoad(const void* address, uint64_t* value);
-int wowps5GuardStore(void* address, uint64_t value);
-int wowps5GuardGsLoad(uint64_t offset, uint64_t* value);
-int wowps5GuardRdgsbase(uint64_t* value);
-int wowps5GuardWrgsbase(uint64_t value);
-int wowps5GuardXsave(void* area, uint64_t mask);
-int wowps5GuardXsavec(void* area, uint64_t mask);
-int wowps5GuardXrstor(const void* area, uint64_t mask);
-extern const char wowps5GuardLoadSite[], wowps5GuardStoreSite[], wowps5GuardGsLoadSite[],
-    wowps5GuardRdgsbaseSite[], wowps5GuardWrgsbaseSite[], wowps5GuardXsaveSite[], wowps5GuardXsavecSite[],
-    wowps5GuardXrstorSite[], wowps5GuardLanding[];
+// returns 0, or 1 through pokemmops5GuardLanding when its site faulted.
+int pokemmops5GuardLoad(const void* address, uint64_t* value);
+int pokemmops5GuardStore(void* address, uint64_t value);
+int pokemmops5GuardGsLoad(uint64_t offset, uint64_t* value);
+int pokemmops5GuardRdgsbase(uint64_t* value);
+int pokemmops5GuardWrgsbase(uint64_t value);
+int pokemmops5GuardXsave(void* area, uint64_t mask);
+int pokemmops5GuardXsavec(void* area, uint64_t mask);
+int pokemmops5GuardXrstor(const void* area, uint64_t mask);
+extern const char pokemmops5GuardLoadSite[], pokemmops5GuardStoreSite[], pokemmops5GuardGsLoadSite[],
+    pokemmops5GuardRdgsbaseSite[], pokemmops5GuardWrgsbaseSite[], pokemmops5GuardXsaveSite[], pokemmops5GuardXsavecSite[],
+    pokemmops5GuardXrstorSite[], pokemmops5GuardLanding[];
 __asm__(".text\n"
-    ".global wowps5GuardLoad, wowps5GuardLoadSite\nwowps5GuardLoad:\nwowps5GuardLoadSite:\n"
+    ".global pokemmops5GuardLoad, pokemmops5GuardLoadSite\npokemmops5GuardLoad:\npokemmops5GuardLoadSite:\n"
     " movq (%rdi),%rax\n movq %rax,(%rsi)\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardStore, wowps5GuardStoreSite\nwowps5GuardStore:\nwowps5GuardStoreSite:\n"
+    ".global pokemmops5GuardStore, pokemmops5GuardStoreSite\npokemmops5GuardStore:\npokemmops5GuardStoreSite:\n"
     " movq %rsi,(%rdi)\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardGsLoad, wowps5GuardGsLoadSite\nwowps5GuardGsLoad:\nwowps5GuardGsLoadSite:\n"
+    ".global pokemmops5GuardGsLoad, pokemmops5GuardGsLoadSite\npokemmops5GuardGsLoad:\npokemmops5GuardGsLoadSite:\n"
     " movq %gs:(%rdi),%rax\n movq %rax,(%rsi)\n xorl %eax,%eax\n ret\n"
     // rdgsbase %rax and wrgsbase %rdi as bytes: the assembler refuses them without -mfsgsbase
-    ".global wowps5GuardRdgsbase, wowps5GuardRdgsbaseSite\nwowps5GuardRdgsbase:\nwowps5GuardRdgsbaseSite:\n"
+    ".global pokemmops5GuardRdgsbase, pokemmops5GuardRdgsbaseSite\npokemmops5GuardRdgsbase:\npokemmops5GuardRdgsbaseSite:\n"
     " .byte 0xf3,0x48,0x0f,0xae,0xc8\n movq %rax,(%rdi)\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardWrgsbase, wowps5GuardWrgsbaseSite\nwowps5GuardWrgsbase:\nwowps5GuardWrgsbaseSite:\n"
+    ".global pokemmops5GuardWrgsbase, pokemmops5GuardWrgsbaseSite\npokemmops5GuardWrgsbase:\npokemmops5GuardWrgsbaseSite:\n"
     " .byte 0xf3,0x48,0x0f,0xae,0xdf\n xorl %eax,%eax\n ret\n"
     // xsave64, xsavec64 and xrstor64 on (%rdi), with the mask in %rsi
-    ".global wowps5GuardXsave, wowps5GuardXsaveSite\nwowps5GuardXsave:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
-    "wowps5GuardXsaveSite:\n .byte 0x48,0x0f,0xae,0x27\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardXsavec, wowps5GuardXsavecSite\nwowps5GuardXsavec:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
-    "wowps5GuardXsavecSite:\n .byte 0x48,0x0f,0xc7,0x27\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardXrstor, wowps5GuardXrstorSite\nwowps5GuardXrstor:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
-    "wowps5GuardXrstorSite:\n .byte 0x48,0x0f,0xae,0x2f\n xorl %eax,%eax\n ret\n"
-    ".global wowps5GuardLanding\nwowps5GuardLanding:\n movl $1,%eax\n ret\n");
+    ".global pokemmops5GuardXsave, pokemmops5GuardXsaveSite\npokemmops5GuardXsave:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
+    "pokemmops5GuardXsaveSite:\n .byte 0x48,0x0f,0xae,0x27\n xorl %eax,%eax\n ret\n"
+    ".global pokemmops5GuardXsavec, pokemmops5GuardXsavecSite\npokemmops5GuardXsavec:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
+    "pokemmops5GuardXsavecSite:\n .byte 0x48,0x0f,0xc7,0x27\n xorl %eax,%eax\n ret\n"
+    ".global pokemmops5GuardXrstor, pokemmops5GuardXrstorSite\npokemmops5GuardXrstor:\n movq %rsi,%rax\n movq %rsi,%rdx\n shrq $32,%rdx\n"
+    "pokemmops5GuardXrstorSite:\n .byte 0x48,0x0f,0xae,0x2f\n xorl %eax,%eax\n ret\n"
+    ".global pokemmops5GuardLanding\npokemmops5GuardLanding:\n movl $1,%eax\n ret\n");
 
 static FILE* report;
 static unsigned failures;
 static void say(const char* format, ...) {
     char line[600]; va_list arguments;
     va_start(arguments, format); vsnprintf(line, sizeof(line), format, arguments); va_end(arguments);
-    fprintf(stderr, "[WoWPS5 Wine] %s\n", line); fflush(stderr);
+    fprintf(stderr, "[PokeMMO PS5 Wine] %s\n", line); fflush(stderr);
     if(report) { fprintf(report, "%s\n", line); fflush(report); }
 }
 static void verdict(bool passed, const char* what) {
@@ -133,11 +133,11 @@ static void faultHandler(int number, siginfo_t* info, void* opaque) {
         seen.fixPage = 0;
         if(!seen.fixResult) return;
     }
-    static const char* const sites[] = { wowps5GuardLoadSite, wowps5GuardStoreSite, wowps5GuardGsLoadSite,
-                                         wowps5GuardRdgsbaseSite, wowps5GuardWrgsbaseSite, wowps5GuardXsaveSite,
-                                         wowps5GuardXsavecSite, wowps5GuardXrstorSite };
+    static const char* const sites[] = { pokemmops5GuardLoadSite, pokemmops5GuardStoreSite, pokemmops5GuardGsLoadSite,
+                                         pokemmops5GuardRdgsbaseSite, pokemmops5GuardWrgsbaseSite, pokemmops5GuardXsaveSite,
+                                         pokemmops5GuardXsavecSite, pokemmops5GuardXrstorSite };
     for(unsigned i = 0; i < sizeof(sites)/sizeof(*sites); i++) if(rip == (uintptr_t)sites[i]) {
-        context->uc_mcontext.mc_rip = (uintptr_t)wowps5GuardLanding;
+        context->uc_mcontext.mc_rip = (uintptr_t)pokemmops5GuardLanding;
         return;
     }
     // A call into memory that turned out not to be executable: return to the caller with -1.
@@ -219,12 +219,12 @@ static void probeFaults(void) {
     uint8_t* base = range; uint64_t value = 0;
     say("next: deliberate read of reserved, unbacked memory at %p", (void*)(base+0x20000));
     seen.count = 0; seen.signal = 0; seen.code = 0;
-    const uint64_t marker[2] = { 0x5750533566707866ull, 0 };
+    const uint64_t marker[2] = { 0x504d4d3566707866ull, 0 };
     uint32_t mxcsr = 0;
-    const uint64_t wide[4] = { 0x5750533566707866ull, 0, 0x5750533579686967ull, 0 };
+    const uint64_t wide[4] = { 0x504d4d3566707866ull, 0, 0x504d4d3579686967ull, 0 };
     __asm__("vmovdqu %0,%%ymm6\n stmxcsr %1" : : "m"(wide), "m"(mxcsr) : "xmm6");
     seen.findMarker = marker[0]; seen.markerOffset = -1;
-    int faulted = wowps5GuardLoad(base+0x20000, &value);
+    int faulted = pokemmops5GuardLoad(base+0x20000, &value);
     seen.findMarker = 0;
     say("fault fpstate xmm6_marker_at_context_offset=%d sdk_mc_fpstate_offset=%zu sdk_fpformat_offset=%zu sizeof_ucontext=%zu", seen.markerOffset,
         offsetof(ucontext_t, uc_mcontext.mc_fpstate), offsetof(ucontext_t, uc_mcontext.mc_fpformat), seen.contextBytes);
@@ -239,24 +239,24 @@ static void probeFaults(void) {
         seen.fpFormat, seen.fpOwned, seen.mcFlags, seen.fpControl, seen.fpMxcsr, mxcsr, seen.fpMxcsrMask, seen.fpXmm6 == marker[0],
         (unsigned long long)seen.fpExtraAddress, (unsigned long long)seen.fpExtraBytes);
     say("fault unbacked_read faulted=%d signal=%d code=%d address_matches=%d rip_matches=%d rdi_matches=%d on_alt_stack=%d handler_runs=%d",
-        faulted, seen.signal, seen.code, seen.address == (uintptr_t)(base+0x20000), seen.rip == (uintptr_t)wowps5GuardLoadSite,
+        faulted, seen.signal, seen.code, seen.address == (uintptr_t)(base+0x20000), seen.rip == (uintptr_t)pokemmops5GuardLoadSite,
         seen.rdiInContext == (uintptr_t)(base+0x20000), seen.onAltStack, seen.count);
-    verdict(faulted == 1 && seen.count == 1 && seen.address == (uintptr_t)(base+0x20000) && seen.rip == (uintptr_t)wowps5GuardLoadSite,
+    verdict(faulted == 1 && seen.count == 1 && seen.address == (uintptr_t)(base+0x20000) && seen.rip == (uintptr_t)pokemmops5GuardLoadSite,
             "a handler receives the fault's address and instruction, and resumes elsewhere by editing the saved rip");
     int commit = ps5_vrange_commit(base, 0x4000, PS5_SHM_READ|PS5_SHM_WRITE);
-    int stored = commit ? -1 : wowps5GuardStore(base, 0x1122334455667788ull);
+    int stored = commit ? -1 : pokemmops5GuardStore(base, 0x1122334455667788ull);
     int readOnly = commit ? -1 : ps5_vrange_commit(base, 0x4000, PS5_SHM_READ);
     seen.count = 0;
     say("next: deliberate write to a read-only page at %p", (void*)base);
-    faulted = wowps5GuardStore(base, 1);
-    int loaded = wowps5GuardLoad(base, &value);
+    faulted = pokemmops5GuardStore(base, 1);
+    int loaded = pokemmops5GuardLoad(base, &value);
     say("fault readonly_write commit=0x%08x first_store=%d protect=0x%08x faulted=%d signal=%d code=%d kept_value=%d",
         (unsigned)commit, stored, (unsigned)readOnly, faulted, seen.signal, seen.code, !loaded && value == 0x1122334455667788ull);
     verdict(faulted == 1 && seen.count == 1 && !loaded && value == 0x1122334455667788ull, "a write to a read-only page faults and changes nothing");
     seen.count = 0; seen.fixResult = -1; seen.fixPage = (uintptr_t)base;
     say("next: write fault repaired inside the handler, instruction rerun");
-    faulted = wowps5GuardStore(base, 0xfeedfacecafebeefull);
-    loaded = wowps5GuardLoad(base, &value);
+    faulted = pokemmops5GuardStore(base, 0xfeedfacecafebeefull);
+    loaded = pokemmops5GuardLoad(base, &value);
     say("fault repair faulted=%d handler_runs=%d mprotect_in_handler=0x%08x value_written=%d",
         faulted, seen.count, (unsigned)seen.fixResult, !loaded && value == 0xfeedfacecafebeefull);
     verdict(!faulted && seen.count == 1 && !seen.fixResult && value == 0xfeedfacecafebeefull,
@@ -271,10 +271,10 @@ static void* threadMain(void* argument) {
     test->self = pthread_self(); test->block[6] = (uint64_t)test->block;
     test->initialGs = gsBase();
     test->setResult = sysarch(AMD64_SET_GSBASE, &value) ? errno : 0;
-    if(!test->setResult && gsBase() == value) wowps5GuardGsLoad(0x30, &test->readBack);
+    if(!test->setResult && gsBase() == value) pokemmops5GuardGsLoad(0x30, &test->readBack);
     test->stage = 1;
     for(int i = 0; i < 400 && test->stage < 2; i++) usleep(5000);   // the main thread signals this one here
-    if(!test->setResult && gsBase() == value) wowps5GuardGsLoad(0x30, &test->afterSleep);
+    if(!test->setResult && gsBase() == value) pokemmops5GuardGsLoad(0x30, &test->afterSleep);
     return NULL;
 }
 
@@ -292,19 +292,19 @@ static void probeGs(void) {
     if(set || back != value) {
         verdict(false, "sysarch sets the GS base");
     } else {
-        int faulted = wowps5GuardGsLoad(0x30, &read);
+        int faulted = pokemmops5GuardGsLoad(0x30, &read);
         say("gs load_through_segment faulted=%d self_pointer_matches=%d", faulted, read == value);
         bool held = !faulted && read == value;
         verdict(held, "Windows code can reach a TEB through %gs:0x30");
         for(int i = 0; i < 200; i++) { sched_yield(); if(i % 50 == 0) usleep(10000); }
-        read = 0; wowps5GuardGsLoad(0x30, &read);
+        read = 0; pokemmops5GuardGsLoad(0x30, &read);
         say("gs after_yield_and_sleep matches=%d", read == value);
         verdict(read == value, "the GS base survives context switches");
         seen.user1Count = 0; seen.gsInHandler = seen.mcGs = 0;
         raise(SIGUSR1);
         say("gs in_signal_handler runs=%d sysarch_matches=%d mcontext_gsbase=0x%lx mcontext_matches=%d", seen.user1Count,
             seen.gsInHandler == value, (unsigned long)seen.mcGs, seen.mcGs == value);
-        read = 0; wowps5GuardGsLoad(0x30, &read);
+        read = 0; pokemmops5GuardGsLoad(0x30, &read);
         verdict(seen.user1Count == 1 && seen.gsInHandler == value && read == value, "the GS base holds inside and after a signal handler");
 
         struct ThreadTest test; memset(&test, 0, sizeof(test));
@@ -318,7 +318,7 @@ static void probeGs(void) {
             const bool delivered = seen.user1Count == 1 && seen.user1Thread == (uintptr_t)test.self;
             const bool threadGs = seen.gsInHandler == (uint64_t)test.block;
             test.stage = 2; pthread_join(thread, NULL);
-            read = 0; wowps5GuardGsLoad(0x30, &read);
+            read = 0; pokemmops5GuardGsLoad(0x30, &read);
             say("gs second_thread inherits_creator=%d set_errno=%d read_back_matches=%d after_signal_matches=%d main_still_matches=%d",
                 test.initialGs == value, test.setResult, test.readBack == (uint64_t)test.block, test.afterSleep == (uint64_t)test.block, read == value);
             say("signal pthread_kill result=%d delivered_to_target=%d handler_saw_target_gs=%d", killed, delivered, threadGs);
@@ -333,8 +333,8 @@ static void probeGs(void) {
     uint64_t direct = 0;
     say("next: rdgsbase and wrgsbase instructions (SIGILL when the kernel leaves them off)");
     seen.count = 0;
-    const int readFault = wowps5GuardRdgsbase(&direct);
-    const int writeFault = readFault ? 1 : wowps5GuardWrgsbase(direct);
+    const int readFault = pokemmops5GuardRdgsbase(&direct);
+    const int writeFault = readFault ? 1 : pokemmops5GuardWrgsbase(direct);
     say("gs fsgsbase_instructions rdgsbase_faulted=%d signal=%d matches_sysarch=%d wrgsbase_faulted=%d",
         readFault, readFault ? seen.signal : 0, !readFault && direct == gsBase(), writeFault);
     const int restore = sysarch(AMD64_SET_GSBASE, &original) ? errno : 0;
@@ -353,27 +353,27 @@ static void probeXstate(void) {
     static uint8_t area[4096] __attribute__((aligned(64)));
     uint64_t header[3];
     memset(area, 0, sizeof(area)); seen.count = 0;
-    const int saved = wowps5GuardXsave(area, cpu); memcpy(header, area + 512, sizeof(header));
-    const int restored = saved ? -1 : wowps5GuardXrstor(area, cpu);
+    const int saved = pokemmops5GuardXsave(area, cpu); memcpy(header, area + 512, sizeof(header));
+    const int restored = saved ? -1 : pokemmops5GuardXrstor(area, cpu);
     say("xstate standard xsave_faulted=%d signal=%d xstate_bv=0x%llx xcomp_bv=0x%llx xrstor_faulted=%d", saved, saved ? seen.signal : 0,
         (unsigned long long)header[0], (unsigned long long)header[1], restored);
     memset(area, 0, sizeof(area)); seen.count = 0;
-    const int compacted = wowps5GuardXsavec(area, cpu); memcpy(header, area + 512, sizeof(header));
-    const int compactRestored = compacted ? -1 : wowps5GuardXrstor(area, cpu);
+    const int compacted = pokemmops5GuardXsavec(area, cpu); memcpy(header, area + 512, sizeof(header));
+    const int compactRestored = compacted ? -1 : pokemmops5GuardXrstor(area, cpu);
     say("xstate compacted xsavec_faulted=%d signal=%d xstate_bv=0x%llx xcomp_bv=0x%llx xrstor_faulted=%d signal=%d", compacted, compacted ? seen.signal : 0,
         (unsigned long long)header[0], (unsigned long long)header[1], compactRestored, compactRestored > 0 ? seen.signal : 0);
     // what Wine builds for a context with no AVX state in use: compaction mask for every CPU feature, nothing present
     memset(area, 0, sizeof(area)); header[0] = 0; header[1] = 0x8000000000000000ull | (cpu & ~3ull); header[2] = 0;
     memcpy(area + 512, header, sizeof(header)); area[0] = 0x7f; area[1] = 0x03; area[24] = 0x80; area[25] = 0x1f;   // fcw 0x37f, mxcsr 0x1f80
     seen.count = 0;
-    const int built = wowps5GuardXrstor(area, cpu);
+    const int built = pokemmops5GuardXrstor(area, cpu);
     say("xstate built_compacted mask_all_cpu_features xrstor_faulted=%d signal=%d", built, built ? seen.signal : 0);
     memset(area + 512, 0, 64); header[1] = 0x8000000000000000ull | (xcr0 & ~3ull); memcpy(area + 512, header, sizeof(header));
     seen.count = 0;
-    const int builtEnabled = wowps5GuardXrstor(area, xcr0);
+    const int builtEnabled = pokemmops5GuardXrstor(area, xcr0);
     say("xstate built_compacted mask_enabled_features xrstor_faulted=%d signal=%d", builtEnabled, builtEnabled ? seen.signal : 0);
     memset(area + 512, 0, 64); seen.count = 0;
-    const int builtStandard = wowps5GuardXrstor(area, xcr0);
+    const int builtStandard = pokemmops5GuardXrstor(area, xcr0);
     say("xstate built_standard empty_header xrstor_faulted=%d signal=%d", builtStandard, builtStandard ? seen.signal : 0);
 }
 
@@ -382,8 +382,7 @@ static void probePlacement(void) {
         { 0x10000, 0x10000, "lowest_64k" },
         { 0x110000, 0x100000, "low_1mib" },
         { 0x7ffe0000, 0x10000, "KUSER_SHARED_DATA" },
-        { 0x140000000ull, 0x8590000, "WowB.exe_preferred_base" },
-        { 0x180000000ull, 0x29a0000, "WowB_loader.dll_preferred_base" },
+        { 0x140000000ull, 0x06bfa000, "PokeMMO.exe_preferred_base" },
         { 0x1000000000ull, 0x100000000ull, "4gib_at_64gib" },
         { 0x7ffffffe0000ull, 0x10000, "top_of_windows_user_space" },
     };
@@ -394,9 +393,9 @@ static void probePlacement(void) {
         if(!reserve) {
             commit = ps5_vrange_commit(at, 0x4000, PS5_SHM_READ|PS5_SHM_WRITE);
             if(!commit) {
-                stored = wowps5GuardStore(at, 0x5750533500000000ull | i) || wowps5GuardLoad(at, &value) || value != (0x5750533500000000ull | i);
+                stored = pokemmops5GuardStore(at, 0x504d4d3500000000ull | i) || pokemmops5GuardLoad(at, &value) || value != (0x504d4d3500000000ull | i);
                 readOnly = ps5_vrange_commit(at, 0x4000, PS5_SHM_READ);
-                blocked = wowps5GuardStore(at, 0);
+                blocked = pokemmops5GuardStore(at, 0);
                 ps5_vrange_decommit(at, 0x10000);
             }
             release = ps5_vrange_release(at, places[i].bytes);
@@ -417,7 +416,7 @@ static void probePlacement(void) {
         ps5_exec_free(&region);
     }
     say("place code_at_0x140000000 alloc=0x%08x returned=%d", (unsigned)allocate, answer);
-    verdict(!allocate && answer == 42, "code runs at WowB.exe's preferred base");
+    verdict(!allocate && answer == 42, "code runs at PokeMMO.exe's preferred base");
 
     // The plain BSD calls Wine's virtual.c is written against
     void* anonymous = mmap(NULL, 0x10000, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
@@ -445,7 +444,7 @@ static void probePlacement(void) {
     void* noReserve = mmap((void*)0x2000000000ull, 0x40000000, PROT_NONE, MAP_PRIVATE|MAP_ANON, -1, 0);
     say("mmap reserve_1gib_prot_none hint=0x2000000000 result=%p errno=%d", noReserve, noReserve == MAP_FAILED ? errno : 0);
     if(noReserve != MAP_FAILED) munmap(noReserve, 0x40000000);
-    const int file = open("/data/wowps5/client/WowB.exe", O_RDONLY);
+    const int file = open("/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/PokeMMO.exe", O_RDONLY);
     say("file open_client_exe fd=%d errno=%d", file, file < 0 ? errno : 0);
     if(file >= 0) {
         uint8_t* view = mmap(NULL, 0x10000, PROT_READ, MAP_PRIVATE, file, 0);
@@ -457,7 +456,7 @@ static void probePlacement(void) {
         if(view != MAP_FAILED) { view[0] = 'm'; say("mmap file_private_copy_on_write stored=%d", view[0] == 'm'); munmap(view, 0x10000); }
         close(file);
     }
-    const int scratch = open("/data/wowps5/contract-scratch.bin", O_RDWR|O_CREAT|O_TRUNC, 0600);
+    const int scratch = open("/data/pokemmo/contract-scratch.bin", O_RDWR|O_CREAT|O_TRUNC, 0600);
     say("file create_scratch fd=%d errno=%d", scratch, scratch < 0 ? errno : 0);
     if(scratch >= 0) {
         const int sized = ftruncate(scratch, 0x10000) ? errno : 0;
@@ -466,7 +465,7 @@ static void probePlacement(void) {
         if(view != MAP_FAILED) { view[5] = 0x5a; msync(view, 0x10000, MS_SYNC); reads = pread(scratch, &byte, 1, 5); munmap(view, 0x10000); }
         say("mmap file_shared_readwrite ftruncate_errno=%d result=%p errno=%d written_through=%d", sized, (void*)view,
             view == MAP_FAILED ? errno : 0, reads == 1 && byte == 0x5a);
-        close(scratch); unlink("/data/wowps5/contract-scratch.bin");
+        close(scratch); unlink("/data/pokemmo/contract-scratch.bin");
     }
 }
 
@@ -596,9 +595,9 @@ static void probeDescriptors(void) {
     probeNonblocking("socket_SOCK_NONBLOCK", 3);
     probeNonblocking("recv_MSG_DONTWAIT", 4);
     int pipes[2] = {-1, -1}; pipe(pipes);
-    const int data = open("/data/wowps5/client/WowB.exe", O_RDONLY);
+    const int data = open("/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/PokeMMO.exe", O_RDONLY);
     const int title = open("/app0/sce_sys/param.json", O_RDONLY);
-    const int directory = open("/data/wowps5", O_RDONLY);
+    const int directory = open("/data/pokemmo", O_RDONLY);
     const int null = open("/dev/null", O_RDWR);
     const int sock = socket(AF_UNIX, SOCK_STREAM, 0);
     probeDuplicate("stderr", 2);
@@ -624,13 +623,13 @@ static void probeDescriptors(void) {
 // Every name Wine's native side imports must be backed by a loaded module on
 // this firmware. The stub libraries list what newer firmware exports; a name
 // this console's modules lack is left null and faults at its first call.
-extern const struct { const char* name; const void* address; } wowps5WineImports[];
-extern const size_t wowps5WineImportCount;
+extern const struct { const char* name; const void* address; } pokemmops5WineImports[];
+extern const size_t pokemmops5WineImportCount;
 static void probeImports(void) {
     unsigned missing = 0;
-    for(size_t i = 0; i < wowps5WineImportCount; i++)
-        if(!wowps5WineImports[i].address) { missing++; say("import %s unresolved", wowps5WineImports[i].name); }
-    say("imports checked=%zu unresolved=%u", wowps5WineImportCount, missing);
+    for(size_t i = 0; i < pokemmops5WineImportCount; i++)
+        if(!pokemmops5WineImports[i].address) { missing++; say("import %s unresolved", pokemmops5WineImports[i].name); }
+    say("imports checked=%zu unresolved=%u", pokemmops5WineImportCount, missing);
     verdict(!missing, "every import of Wine's native side resolves on this firmware");
     // resolved, but built on a kernel call the title's libkernel lacks: it jumps to an unmapped address
     say("imports note getcwd resolves into libSceLibcInternal and faults when called (run wine-20261004-104738)");
@@ -688,7 +687,7 @@ static void probeCosts(void) {
         COST("pipe round trip through another thread", 20000, ((void)write(fds[1], &byte, 1), (void)read(fds[2], &byte, 1)));
         byte = 'q'; (void)write(fds[1], &byte, 1); pthread_join(echo, NULL);
     }
-    const int file = open("/data/wowps5/test/cost-probe.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
+    const int file = open("/data/pokemmo/test/cost-probe.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
     if(file >= 0) {
         COST("pwrite 64 bytes", 2000, (void)pwrite(file, block, 64, 0));
         COST("pwrite 4 KiB", 2000, (void)pwrite(file, block, 4096, 0));
@@ -700,9 +699,9 @@ static void probeCosts(void) {
         COST("lseek", 100000, (void)lseek(file, 0, SEEK_SET));
         close(file);
     }
-    COST("open + close an existing file", 2000, ({ const int fd = open("/data/wowps5/test/cost-probe.bin", O_RDONLY); if(fd >= 0) close(fd); }));
-    COST("stat by path", 5000, ({ struct stat info; stat("/data/wowps5/test/cost-probe.bin", &info); }));
-    unlink("/data/wowps5/test/cost-probe.bin");
+    COST("open + close an existing file", 2000, ({ const int fd = open("/data/pokemmo/test/cost-probe.bin", O_RDONLY); if(fd >= 0) close(fd); }));
+    COST("stat by path", 5000, ({ struct stat info; stat("/data/pokemmo/test/cost-probe.bin", &info); }));
+    unlink("/data/pokemmo/test/cost-probe.bin");
 }
 
 // How many descriptors a title may hold, by kind: the client holds about 660
@@ -715,7 +714,7 @@ static void probeDescriptorLimits(void) {
     say("descriptors: RLIMIT_NOFILE %d cur=%lld max=%lld sysconf(_SC_OPEN_MAX)=%ld", limited, (long long)limit.rlim_cur, (long long)limit.rlim_max, sysconf(_SC_OPEN_MAX));
     static const struct { const char* what; const char* path; } files[] = {
         { "one file of the title, read", "/app0/sce_sys/param.json" },
-        { "one file on /data, read", "/data/wowps5/prefix/system.reg" },
+        { "one file on /data, read", "/data/pokemmo/prefix/system.reg" },
     };
     for(unsigned kind = 0; kind < sizeof(files)/sizeof(*files); kind++) {
         int count = 0, highest = -1; errno = 0;
@@ -784,12 +783,12 @@ static void probeSharedObjects(void) {
 }
 
 static void probeFiles(void) {
-    probeDirectory("/data/wowps5/prefix");
-    probeDirectory("/data/wowps5/wine/lib/wine/x86_64-windows");
+    probeDirectory("/data/pokemmo/prefix");
+    probeDirectory("/data/pokemmo/wine/lib/wine/x86_64-windows");
     probeDirectory("/app0");
     // the working directory: Wine lists a directory by changing into it
     struct stat inside; memset(&inside, 0, sizeof(inside));
-    errno = 0; const int changed = chdir("/data/wowps5"); const int changeError = errno;
+    errno = 0; const int changed = chdir("/data/pokemmo"); const int changeError = errno;
     errno = 0; const int relative = stat("prefix/system.reg", &inside); const int relativeError = errno;
     errno = 0; const int dot = open(".", O_RDONLY); const int dotError = errno;
     errno = 0; DIR* here = opendir("."); const int hereError = errno;
@@ -799,8 +798,9 @@ static void probeFiles(void) {
         dot >= 0 ? 0 : -1, dotError, here ? "ok" : "null", hereError, names, back, backError);
     if(here) closedir(here);
     if(dot >= 0) close(dot);
-    static const char* const paths[] = { "/data/wowps5/prefix/dosdevices/c:/users", "/data/wowps5/prefix/dosdevices/c:/users/",
-        "/data/wowps5/prefix/dosdevices/c:/users/..", "/data/wowps5/prefix/system.reg", "/data/wowps5/client/WowB.exe", "/data/wowps5/missing" };
+    static const char* const paths[] = { "/data/pokemmo/prefix/dosdevices/c:/users", "/data/pokemmo/prefix/dosdevices/c:/users/",
+        "/data/pokemmo/prefix/dosdevices/c:/users/..", "/data/pokemmo/prefix/system.reg",
+        "/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/PokeMMO.exe", "/data/pokemmo/missing" };
     for(unsigned i = 0; i < sizeof(paths)/sizeof(*paths); i++) {
         struct stat st; memset(&st, 0, sizeof(st));
         errno = 0; const int plain = stat(paths[i], &st); const int plainError = errno;
@@ -814,7 +814,7 @@ static void probeFiles(void) {
     }
 }
 
-bool wowps5WineContractProbe(const char* reportPath) {
+bool pokemmops5WineContractProbe(const char* reportPath) {
     report = fopen(reportPath, "w"); failures = 0;
     say("contract schema=1 begins");
     probeCpu();

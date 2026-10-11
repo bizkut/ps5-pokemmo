@@ -1,4 +1,4 @@
-// WoWPS5 capability and RGBA16F compute probe. SPDX-License-Identifier: MIT
+// PokeMMO PS5 capability and RGBA16F compute probe. SPDX-License-Identifier: MIT
 #pragma once
 #include "platform.h"
 #include <cstdio>
@@ -25,7 +25,7 @@ static ProbeResult runProbe(vks::VulkanDevice* gpu, VkQueue queue,
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(gpu->physicalDevice, &props);
     out.apiVersion = props.apiVersion;
-    say("probe identity wowps5-rgba16f-v2; device %s; Vulkan %u.%u.%u", props.deviceName,
+    say("probe identity pokemmops5-rgba16f-v2; device %s; Vulkan %u.%u.%u", props.deviceName,
         VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
         VK_API_VERSION_PATCH(props.apiVersion));
     VkFormatProperties format{};

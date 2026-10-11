@@ -5,6 +5,8 @@ build/
 dist/
 vendor/
 .director-runs/
+.tokensave/
+.DS_Store
 klog/
 *.log
 
@@ -19,9 +21,20 @@ game-data/
 wineprefix/
 prefixes/
 credentials*
-game-sent.json
+pokemmo-client-sent.json
 tokens*
 *.dmp
+roms/
+*.[Nn][Dd][Ss]
+*.[Gg][Bb][Aa]
+
+# Official PokeMMO downloads and client entry points are user-supplied, never published.
+# Case-insensitive patterns also cover copies renamed on Windows/macOS.
+[Pp][Oo][Kk][Ee][Mm][Mm][Oo]-[Cc][Ll][Ii][Ee][Nn][Tt]*
+[Pp][Oo][Kk][Ee][Mm][Mm][Oo]
+[Pp][Oo][Kk][Ee][Mm][Mm][Oo]*.[Ee][Xx][Ee]
+[Pp][Oo][Kk][Ee][Mm][Mm][Oo]*.[Jj][Aa][Rr]
+[Pp][Oo][Kk][Ee][Mm][Mm][Oo].[Ss][Hh]
 
 # Python tooling caches
 __pycache__/

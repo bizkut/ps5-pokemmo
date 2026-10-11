@@ -1,21 +1,22 @@
 /* The on-screen keyboard's logic on the PC: shortcut detection, what the game
  * sees of the pad, the dialog's life, and the typing. The system dialog and the
- * clock are the test's (WOWPS5_INPUT_TEST in app/runtime/wine_osk.c). MIT.
+ * clock are the test's (POKEMMOPS5_INPUT_TEST in app/runtime/wine_osk.c). MIT.
  *
  *   cc -std=c11 -Wall -Wextra -o work/osk-partner/native-osk-test tools/native-osk-test.c -lpthread
  */
 #define _DEFAULT_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#define WOWPS5_INPUT_TEST
+#define POKEMMOPS5_INPUT_TEST
 #include "../app/runtime/wine_devices.c"
 
 struct queued { unsigned type, code, flags; int x, y; } captured[4096];
 static unsigned queued, refuse_nth, calls, refused;   /* refuse_nth: every nth call finds the queue full */
-int wowps5_input_queue(unsigned type, unsigned code, unsigned flags, int x, int y)
+int pokemmops5_input_queue(unsigned type, unsigned code, unsigned flags, int x, int y)
 {
     if (refuse_nth && !(++calls % refuse_nth)) { refused++; return 0; }
     if (queued >= 4096) abort();
+    if (type == 3) pokemmops5_cursor_sync(x, y, 1920, 1080);
     captured[queued++] = (struct queued){type, code, flags, x, y};
     return 1;
 }
@@ -24,8 +25,8 @@ static unsigned checks, failures;
 #define CHECK(condition) do { checks++; if (!(condition)) { failures++; \
     printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition); } } while (0)
 
-enum { L3 = 2, R3 = 4, OPTIONS = 8, UP = 0x10, L2 = 0x100, CROSS = 0x4000, TOUCH = 0x100000, TAKEN = 0x80000000u };
-enum { X_START = 0x10, X_L3 = 0x40, X_R3 = 0x80, X_A = 0x1000, X_UP = 1 };
+enum { L3 = 2, R3 = 4, OPTIONS = 8, UP = 0x10, L2 = 0x100, CIRCLE = 0x2000, CROSS = 0x4000, TOUCH = 0x100000, TAKEN = 0x80000000u };
+enum { X_START = 0x10, X_L3 = 0x40, X_R3 = 0x80, X_B = 0x2000, X_UP = 1 };
 
 static struct pad_data pad = {.connected = 1, .lx = 128, .ly = 128, .rx = 128, .ry = 128};
 static unsigned seen;      /* every XInput button the game could have read, ORed */
@@ -35,6 +36,7 @@ static void turn(uint32_t buttons)
     osk_test_now += 4;
     pad.buttons = buttons;
     pad_sample(&pad);
+    tap_click_tick();
     seen |= gamepad.pad.buttons;
     osk_tick();
 }
@@ -46,6 +48,9 @@ static void fresh(void)
     queued = refuse_nth = calls = refused = seen = 0;
     memset(&osk_fake, 0, sizeof(osk_fake));
     pad.lx = pad.ly = pad.rx = pad.ry = 128; pad.l2 = pad.r2 = 0; pad.touches = 0; pad.connected = 1;
+    touch_tap.phase = TOUCH_TAP_CLEAR;
+    tap_click_pending = tap_click_down = 0; tap_click_release_at = 0;
+    mouse_held[MOUSE_TAP_SOURCE] = 0;
 }
 static void dialog_text(const char *text)
 {
@@ -92,21 +97,21 @@ int main(void)
     CHECK(osk.chord[OSK_KEYBOARD] == (L3 | R3) && osk.chord[OSK_CHAT] == 0 && osk.members == (L3 | R3));
     CHECK(osk.chord_ms == 80 && osk.tap_ms == 80 && osk.chat_delay_ms == 150 && !osk.unicode && !osk.automatic && !focus_diagnostic);
     /* a malformed line keeps the default; one shortcut inside the other loses the outer */
-    setenv("WOWPS5_OSK_KEYBOARD", "L3+R9", 1); setenv("WOWPS5_OSK_CHAT", "L3+R3+OPTIONS", 1);
+    setenv("POKEMMOPS5_OSK_KEYBOARD", "L3+R9", 1); setenv("POKEMMOPS5_OSK_CHAT", "L3+R3+OPTIONS", 1);
     osk_settings();
     CHECK(osk.chord[OSK_KEYBOARD] == (L3 | R3) && osk.chord[OSK_CHAT] == 0 && osk.members == (L3 | R3));
-    setenv("WOWPS5_OSK_KEYBOARD", "CREATE", 1); setenv("WOWPS5_OSK_CHAT", "off", 1);
-    setenv("WOWPS5_OSK_CHORD_MS", "40", 1); setenv("WOWPS5_OSK_CHAT_DELAY_MS", "300", 1);
-    setenv("WOWPS5_OSK_TEXT", "unicode", 1); setenv("WOWPS5_OSK_AUTO", "1", 1); setenv("WOWPS5_FOCUS_DIAGNOSTICS", "1", 1);
+    setenv("POKEMMOPS5_OSK_KEYBOARD", "CREATE", 1); setenv("POKEMMOPS5_OSK_CHAT", "off", 1);
+    setenv("POKEMMOPS5_OSK_CHORD_MS", "40", 1); setenv("POKEMMOPS5_OSK_CHAT_DELAY_MS", "300", 1);
+    setenv("POKEMMOPS5_OSK_TEXT", "unicode", 1); setenv("POKEMMOPS5_OSK_AUTO", "1", 1); setenv("POKEMMOPS5_FOCUS_DIAGNOSTICS", "1", 1);
     osk_settings();
     CHECK(osk.chord[OSK_KEYBOARD] == 1 && !osk.chord[OSK_CHAT] && osk.members == 1 && osk.chord_ms == 40 && osk.tap_ms == 50);
     CHECK(osk.chat_delay_ms == 300 && osk.unicode && osk.automatic && focus_diagnostic);
-    setenv("WOWPS5_OSK_CHORD_MS", "9999", 1); setenv("WOWPS5_OSK_CHAT_DELAY_MS", "abc", 1);
+    setenv("POKEMMOPS5_OSK_CHORD_MS", "9999", 1); setenv("POKEMMOPS5_OSK_CHAT_DELAY_MS", "abc", 1);
     osk_settings();
     CHECK(osk.chord_ms == 40 && osk.chat_delay_ms == 300);          /* out of range or not a number: kept */
-    setenv("WOWPS5_OSK_KEYBOARD", "L3+R3", 1); setenv("WOWPS5_OSK_CHAT", "OPTIONS+L3", 1);
-    setenv("WOWPS5_OSK_CHORD_MS", "80", 1); setenv("WOWPS5_OSK_CHAT_DELAY_MS", "150", 1);
-    setenv("WOWPS5_OSK_TEXT", "keys", 1); setenv("WOWPS5_OSK_AUTO", "0", 1); setenv("WOWPS5_FOCUS_DIAGNOSTICS", "0", 1);
+    setenv("POKEMMOPS5_OSK_KEYBOARD", "L3+R3", 1); setenv("POKEMMOPS5_OSK_CHAT", "OPTIONS+L3", 1);
+    setenv("POKEMMOPS5_OSK_CHORD_MS", "80", 1); setenv("POKEMMOPS5_OSK_CHAT_DELAY_MS", "150", 1);
+    setenv("POKEMMOPS5_OSK_TEXT", "keys", 1); setenv("POKEMMOPS5_OSK_AUTO", "0", 1); setenv("POKEMMOPS5_FOCUS_DIAGNOSTICS", "0", 1);
     osk_settings();
     CHECK(osk.chord[OSK_KEYBOARD] == (L3 | R3) && osk.chord[OSK_CHAT] == (OPTIONS | L3) && osk.chord_ms == 80 && osk.tap_ms == 80);
     CHECK(!osk.unicode && !osk.automatic && !focus_diagnostic);
@@ -126,30 +131,43 @@ int main(void)
 
     /* ---- a shortcut button alone ---- */
     fresh();
-    turn(CROSS);
-    CHECK(gamepad.pad.buttons == X_A);                               /* other buttons are not delayed */
-    turns(CROSS | L3, 19);                                          /* 76 ms: L3 is held back */
-    CHECK(gamepad.pad.buttons == X_A && !osk.state);
-    turns(CROSS | L3, 2);                                           /* past 80 ms: a stick click, late */
-    CHECK(gamepad.pad.buttons == (X_A | X_L3));
-    turn(CROSS);
-    CHECK(gamepad.pad.buttons == X_A);
-    /* a quick click is not lost: it reaches the game on release, for 80 ms */
+    turn(CIRCLE);
+    CHECK(gamepad.pad.buttons == X_B);                               /* other buttons are not delayed */
+    turns(CIRCLE | L3, 19);                                         /* 76 ms: L3 is held back */
+    CHECK(gamepad.pad.buttons == X_B && !osk.state);
+    turns(CIRCLE | L3, 2);                                          /* past 80 ms: a stick click, late */
+    CHECK(gamepad.pad.buttons == (X_B | X_L3));
+    turn(CIRCLE);
+    CHECK(gamepad.pad.buttons == X_B);
+    /* Quick L3 and R3 clicks are not lost: each reaches the game on release
+     * for 80 ms, while neither can accidentally change pointer routing. */
+    fresh();
+    turns(L3, 5);
+    CHECK(!gamepad.pad.buttons);
+    turn(0);
+    CHECK(gamepad.pad.buttons == X_L3);
+    turns(0, 19);
+    CHECK(gamepad.pad.buttons == X_L3);
+    turns(0, 2);
+    CHECK(!gamepad.pad.buttons && !osk_fake.opens);
     fresh();
     turns(R3, 5);
     CHECK(!gamepad.pad.buttons);
     turn(0);
-    CHECK(gamepad.pad.buttons == X_R3);
+    CHECK(gamepad.pad.buttons == X_R3 && (seen & X_R3));
     turns(0, 19);
-    CHECK(gamepad.pad.buttons == X_R3);
+    CHECK(gamepad.pad.buttons == X_R3 && !osk_fake.opens);
     turns(0, 2);
-    CHECK(!gamepad.pad.buttons && !osk_fake.opens);
-    /* the second stick after the chord time is two clicks, not the shortcut */
+    CHECK(!gamepad.pad.buttons);
+    /* A late R3 does not turn an expired L3 into the shortcut; both ordinary
+     * stick-click buttons eventually appear together. */
     fresh();
     turns(L3, 30); turns(L3 | R3, 30);
-    CHECK(gamepad.pad.buttons == (X_L3 | X_R3) && !osk.state && !osk_fake.opens);
+    CHECK(gamepad.pad.buttons == (X_L3 | X_R3) && (seen & X_R3) &&
+          !osk.state && !osk_fake.opens);
     turns(0, 1);
     CHECK(!gamepad.pad.buttons);
+
     /* the packet number moves only with what the game sees */
     fresh();
     unsigned packet = gamepad.packet;
@@ -158,9 +176,11 @@ int main(void)
 
     /* the touch-pad click stays the mouse's while a shortcut button is held back */
     fresh();
+    pokemmops5_cursor_sync(640, 360, 1920, 1080);
     pad.touches = 1; pad.touch[0] = (struct touch){100, 100, 1, {0}};
     turn(TOUCH | L3);
-    CHECK(queued == 1 && captured[0].type == 2 && captured[0].flags == 2 && !gamepad.pad.buttons);
+    CHECK(queued == 1 && captured[0].type == 4 && captured[0].code == 0 && captured[0].flags == 2 &&
+          captured[0].x == 640 && captured[0].y == 360 && !gamepad.pad.buttons);
     turn(0);
 
     /* ---- the keyboard shortcut, confirmed ---- */
@@ -170,16 +190,16 @@ int main(void)
     turn(L3 | R3);
     CHECK(osk.state == OSK_RUNNING && osk_fake.opens == 1 && osk_fake.mode == OSK_KEYBOARD);
     CHECK(!(seen & (X_L3 | X_R3)));                                  /* the shortcut's presses never were stick clicks */
-    CHECK(!wowps5_gamepad_state(0, &state) && !state.pad.buttons && !state.pad.lx && !state.pad.rt);   /* connected, neutral */
+    CHECK(!pokemmops5_gamepad_state(0, &state) && !state.pad.buttons && !state.pad.lx && !state.pad.rt);   /* connected, neutral */
     turns(L3 | R3, 5); turns(0, 5);
     pad.touches = 1; pad.touch[0] = (struct touch){100, 100, 1, {0}};
     turn(TOUCH); pad.touch[0].x = 300; turn(TOUCH | CROSS);
     CHECK(!queued && !gamepad.pad.buttons && pad_connected);         /* no mouse, no buttons while it is up */
     pad.touches = 0;
     turns(TAKEN | CROSS, 50);                                       /* the system has the pad: still connected for the game */
-    CHECK(!wowps5_gamepad_state(0, &state) && !state.pad.buttons && osk.state == OSK_RUNNING && !queued);
+    CHECK(!pokemmops5_gamepad_state(0, &state) && !state.pad.buttons && osk.state == OSK_RUNNING && !queued);
     pad.connected = 0; turn(0);
-    CHECK(wowps5_gamepad_state(0, &state) == 1167);                 /* really unplugged */
+    CHECK(pokemmops5_gamepad_state(0, &state) == 1167);                 /* really unplugged */
     pad.connected = 1; turn(TAKEN);
     pad.lx = 128; pad.r2 = 0;
     dialog_text("Hi!"); osk_fake.poll_result = 1;
@@ -188,11 +208,11 @@ int main(void)
     turns(CROSS, 20);
     CHECK(!strcmp(typed(), "+a0 +48 -48 -a0 +49 -49 +a0 +31 -31 -a0"));
     CHECK(text_wiped() && !osk_send.active);
-    CHECK(!(seen & X_A) && osk.state == OSK_SETTLE);                 /* the confirming press is not the game's */
+    CHECK(!(buttons_held & 1) && osk.state == OSK_SETTLE);           /* the confirming press is not the game's */
     turn(0);
     CHECK(osk.state == OSK_IDLE);
-    turn(CROSS);
-    CHECK(gamepad.pad.buttons == X_A);
+    turn(CIRCLE);
+    CHECK(gamepad.pad.buttons == X_B);
     for (unsigned i = 0; i < queued; i++) CHECK(captured[i].type == 1 && !captured[i].x && !captured[i].y);
 
     /* one character a tick, in order */
@@ -210,7 +230,8 @@ int main(void)
     turn(R3); turn(L3 | R3);
     dialog_text("secret"); osk_fake.poll_result = 2;
     turns(0, 40);
-    CHECK(!queued && text_wiped() && osk.state == OSK_IDLE && osk_fake.closes == 1 && osk.dismissed == 1);
+    CHECK(!queued && text_wiped() && osk.state == OSK_IDLE && osk_fake.closes == 1 &&
+          osk.dismissed == 1);
     /* confirmed empty: nothing either */
     fresh();
     turn(L3 | R3); osk_fake.poll_result = 1;
@@ -250,7 +271,7 @@ int main(void)
     turns(0, 200);
     CHECK(!osk_send.active && queued == 2 + 80 + 2);
 
-    /* ---- characters with no key go as themselves; forced for all by WOWPS5_OSK_TEXT=unicode ---- */
+    /* ---- characters with no key go as themselves; forced for all by POKEMMOPS5_OSK_TEXT=unicode ---- */
     fresh();
     turn(L3 | R3);
     osk_text[0] = 'A'; osk_text[1] = 0xe9; osk_text[2] = '\n'; osk_text[3] = 0xd83d; osk_text[4] = 0xde00; osk_text[5] = 'b'; osk_text[6] = 0;
@@ -279,7 +300,7 @@ int main(void)
     turn(L3 | R3); dialog_text("ab"); osk_fake.poll_result = 1;
     turns(0, 40);
     osk_fake.poll_result = 0; turns(0, 600);
-    turns(0x4000, 3); turns(0, 3);
+    turns(CIRCLE, 3); turns(0, 3);
     CHECK(!osk_last_length && !osk_last[0]);
     queued = 0;
     turn(L3 | R3); turns(L3 | R3, 2);
@@ -328,11 +349,11 @@ int main(void)
 
     /* ---- the title's way out ---- */
     fresh();
-    wowps5_osk_shutdown();
+    pokemmops5_osk_shutdown();
     CHECK(!osk_fake.aborts);
     turn(L3 | R3);
     CHECK(atomic_load(&osk_dialog_up) == 1);
-    wowps5_osk_shutdown(); wowps5_osk_shutdown();
+    pokemmops5_osk_shutdown(); pokemmops5_osk_shutdown();
     CHECK(osk_fake.aborts == 1);
     osk_fake.poll_result = 2; turns(0, 10);
 
@@ -350,30 +371,31 @@ int main(void)
     fresh();
     osk.chord[OSK_KEYBOARD] = osk.chord[OSK_CHAT] = 0; osk.members = 0;
     turn(L3 | R3 | OPTIONS);
-    CHECK(gamepad.pad.buttons == (X_L3 | X_R3 | X_START) && !osk_fake.opens && osk.state == OSK_IDLE);
+    CHECK(gamepad.pad.buttons == (X_L3 | X_R3 | X_START) && (seen & X_R3) &&
+          !osk_fake.opens && osk.state == OSK_IDLE);
     osk.chord[OSK_KEYBOARD] = L3 | R3; osk.chord[OSK_CHAT] = OPTIONS | L3; osk.members = L3 | R3 | OPTIONS;
 
     /* ---- text-focus signals: counted; open the keyboard only when asked to (experimental) ---- */
     fresh();
-    wowps5_text_focus_event(0, 3); wowps5_text_focus_event(1, 1); wowps5_text_focus_event(9, 0); wowps5_text_focus_event(99, 0);
+    pokemmops5_text_focus_event(0, 3); pokemmops5_text_focus_event(1, 1); pokemmops5_text_focus_event(9, 0); pokemmops5_text_focus_event(99, 0);
     CHECK(atomic_load(&focus_counts[0]) == 1 && atomic_load(&focus_on_focused) == 1 && atomic_load(&focus_counts[1]) == 1 &&
           atomic_load(&focus_off_focused) == 1 && atomic_load(&focus_counts[9]) == 1 && atomic_load(&focus_changes) == 3);
     turns(0, 5);
-    CHECK(!osk_fake.opens);                                         /* WOWPS5_OSK_AUTO is off */
+    CHECK(!osk_fake.opens);                                         /* POKEMMOPS5_OSK_AUTO is off */
     osk.automatic = 1;
-    wowps5_text_focus_event(0, 1); wowps5_text_focus_event(0, 2); wowps5_text_focus_event(1, 3);
+    pokemmops5_text_focus_event(0, 1); pokemmops5_text_focus_event(0, 2); pokemmops5_text_focus_event(1, 3);
     turns(0, 5);
     CHECK(!osk_fake.opens);                                         /* not focused, or not a change, or context removed */
-    wowps5_text_focus_event(0, 3);
+    pokemmops5_text_focus_event(0, 3);
     turn(0);
     CHECK(osk_fake.opens == 1 && osk_fake.mode == OSK_KEYBOARD && osk.state == OSK_RUNNING);
-    wowps5_text_focus_event(0, 3);                                  /* while it is up, and just after: not again */
+    pokemmops5_text_focus_event(0, 3);                                  /* while it is up, and just after: not again */
     dialog_text("x"); osk_fake.poll_result = 1; turns(0, 20);
     CHECK(osk_fake.opens == 1 && osk.state == OSK_IDLE && queued == 2);
-    wowps5_text_focus_event(0, 3); turns(0, 5);
+    pokemmops5_text_focus_event(0, 3); turns(0, 5);
     CHECK(osk_fake.opens == 1);                                     /* within a second of the last text: not again */
     osk_fake.poll_result = 0; turns(0, 300);
-    wowps5_text_focus_event(0, 3); turn(0);
+    pokemmops5_text_focus_event(0, 3); turn(0);
     CHECK(osk_fake.opens == 2);
     osk_fake.poll_result = 2; turns(0, 10);
     osk.automatic = 0;

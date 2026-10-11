@@ -23,7 +23,7 @@ int main(void) {
     check(getInstance != NULL, "vulkan-1.dll loads", (int)GetLastError());
     if(!getInstance) goto done;
     PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)getInstance(NULL, "vkCreateInstance");
-    VkApplicationInfo application = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "wowps5", .apiVersion = VK_API_VERSION_1_1 };
+    VkApplicationInfo application = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "pokemmops5", .apiVersion = VK_API_VERSION_1_1 };
     VkInstanceCreateInfo instanceInfo = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &application };
     VkInstance instance = VK_NULL_HANDLE;
     VkResult result = createInstance ? createInstance(&instanceInfo, NULL, &instance) : VK_ERROR_INITIALIZATION_FAILED;
@@ -121,6 +121,6 @@ int main(void) {
         vkDestroyInstance(instance, NULL);
     }
 done:
-    printf(failures ? "WoWPS5 Win32 vulkan noscreen test FAIL\n" : "WoWPS5 Win32 vulkan noscreen test PASS\n");
+    printf("PokeMMO PS5 Win32 vulkan noscreen test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     return failures;
 }

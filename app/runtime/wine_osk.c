@@ -2,7 +2,7 @@
  *
  * Included by wine_devices.c, of which it is a part: it runs on that file's
  * 4 ms device thread, gates that file's pad records and types through the
- * same queue (wowps5_input_queue) a USB keyboard does.
+ * same queue (pokemmops5_input_queue) a USB keyboard does.
  *
  *   pad record -> osk_pad()   a controller shortcut asks for the keyboard; the
  *                             shortcut's own buttons never reach the game, and
@@ -46,7 +46,7 @@ static struct
     int state, mode, escape;
     uint64_t poll_at, quiet_until, report_at;
     unsigned opened, confirmed, dismissed, failed;
-} osk = { .chord = {0x2 | 0x4, 0}, .members = 0x2 | 0x4,   /* L3+R3; the chat shortcut is off unless WOWPS5_OSK_CHAT names one */
+} osk = { .chord = {0x2 | 0x4, 0}, .members = 0x2 | 0x4,   /* L3+R3; the chat shortcut is off unless POKEMMOPS5_OSK_CHAT names one */
           .chord_ms = 80, .tap_ms = 80, .chat_delay_ms = 150 };
 
 /* The dialog writes the text here (UTF-16, zero-terminated). Wiped as it is typed. */
@@ -83,7 +83,7 @@ static void osk_prefill(int mode)
 }
 
 /* ---- the system dialog ---- */
-#ifdef WOWPS5_INPUT_TEST
+#ifdef POKEMMOPS5_INPUT_TEST
 /* The host test's clock and dialog (tools/native-osk-test.c). */
 static uint64_t osk_test_now;
 #define OSK_NOW() osk_test_now
@@ -140,7 +140,7 @@ static int osk_dialog_open(int mode)
     int result = sceImeDialogInit(&u.param, NULL);
     if (result >= 0) return result;
     /* Again with what PS4 homebrew is known to pass: user, length and buffer. */
-    fprintf(stderr, "[WoWPS5 input] on-screen keyboard: sceImeDialogInit=%#x, trying the plain form\n", result);
+    fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: sceImeDialogInit=%#x, trying the plain form\n", result);
     memset(&u, 0, sizeof(u));
     u.param.user_id = osk_user;
     u.param.max_text_length = OSK_TEXT_MAX;
@@ -159,7 +159,7 @@ static int osk_dialog_poll(void)
     unsigned length = 0;
     while (length < OSK_TEXT_MAX && osk_text[length]) length++;
     /* how the dialog ended and how much it left, never what */
-    fprintf(stderr, "[WoWPS5 input] on-screen keyboard closed: status=%d result=%#x end=%d length=%u\n", status, fetched, result.end, length);
+    fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard closed: status=%d result=%#x end=%d length=%u\n", status, fetched, result.end, length);
     /* Confirmed is "finished, and not cancelled or aborted": the end status of a
      * confirmation was assumed to be 0, and text left in the buffer says as much. */
     return status == 2 && fetched >= 0 && (result.end == 0 || (result.end != 1 && result.end != 2 && length)) ? 1 : 2;
@@ -193,15 +193,15 @@ static unsigned osk_char_key(unsigned ch)
  * once the release is in. A full queue is tried again on the next tick. */
 static int osk_press(unsigned code, unsigned flags)
 {
-    if (!osk_send.step) { if (!wowps5_input_queue(1, code, flags, 0, 0)) return 0; osk_send.step = 1; }
-    if (!wowps5_input_queue(1, code, flags | 2, 0, 0)) return 0;
+    if (!osk_send.step) { if (!pokemmops5_input_queue(1, code, flags, 0, 0)) return 0; osk_send.step = 1; }
+    if (!pokemmops5_input_queue(1, code, flags | 2, 0, 0)) return 0;
     osk_send.step = 0;
     return 1;
 }
 static int osk_shift(int wanted)
 {
     if (osk_send.shifted == wanted) return 1;
-    if (!wowps5_input_queue(1, 0xa0, wanted ? 0 : 2, 0, 0)) return 0;
+    if (!pokemmops5_input_queue(1, 0xa0, wanted ? 0 : 2, 0, 0)) return 0;
     osk_send.shifted = wanted;
     return 1;
 }
@@ -320,14 +320,14 @@ static int focus_diagnostic;
  * with / removed from a window (flags: 1 the window has the focus, 2 it changed),
  * 2/3 IME opened/closed, 4 composition window placed, 5..9 caret created,
  * destroyed, shown, hidden, moved, 10 input context created, 11 IME disabled. */
-void wowps5_text_focus_event(unsigned kind, unsigned flags)
+void pokemmops5_text_focus_event(unsigned kind, unsigned flags)
 {
     if (kind >= FOCUS_KINDS) return;
     atomic_fetch_add(&focus_counts[kind], 1);
     atomic_fetch_add(&focus_changes, 1);
     if (kind == 0 && (flags & 1)) atomic_fetch_add(&focus_on_focused, 1);
     if (kind == 1 && (flags & 1)) atomic_fetch_add(&focus_off_focused, 1);
-    /* Experimental (WOWPS5_OSK_AUTO): the focused window got its input context back. */
+    /* Experimental (POKEMMOPS5_OSK_AUTO): the focused window got its input context back. */
     if (kind == 0 && (flags & 3) == 3) atomic_store(&osk_auto_request, 1);
 }
 
@@ -343,11 +343,11 @@ static void osk_tick(void)
         if (result < 0)
         {
             osk.failed++; osk.state = OSK_SETTLE;
-            fprintf(stderr, "[WoWPS5 input] on-screen keyboard: sceImeDialogInit=%#x\n", result);
+            fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: sceImeDialogInit=%#x\n", result);
         }
         else
         {
-            if (!osk.opened++) fprintf(stderr, "[WoWPS5 input] on-screen keyboard: first dialog opened\n");
+            if (!osk.opened++) fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: first dialog opened\n");
             atomic_store(&osk_dialog_up, 1);
             osk.state = OSK_RUNNING; osk.escape = 0; osk.poll_at = now + 16;
         }
@@ -374,10 +374,10 @@ static void osk_tick(void)
         osk.report_at = now + 1000;
         if (changes == reported) return;
         reported = changes;
-        fprintf(stderr, "[WoWPS5 input] on-screen keyboard counts: opened=%u confirmed=%u dismissed=%u failed=%u\n",
+        fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard counts: opened=%u confirmed=%u dismissed=%u failed=%u\n",
             osk.opened, osk.confirmed, osk.dismissed, osk.failed);
         if (focus_diagnostic)
-            fprintf(stderr, "[WoWPS5 input] text-focus counts: imc-on=%u (focused %u) imc-off=%u (focused %u) ime-open=%u ime-close=%u "
+            fprintf(stderr, "[PokeMMO PS5 input] text-focus counts: imc-on=%u (focused %u) imc-off=%u (focused %u) ime-open=%u ime-close=%u "
                 "composition-window=%u caret create=%u destroy=%u show=%u hide=%u move=%u imc-create=%u ime-disable=%u\n",
                 atomic_load(&focus_counts[0]), atomic_load(&focus_on_focused), atomic_load(&focus_counts[1]),
                 atomic_load(&focus_off_focused), atomic_load(&focus_counts[2]), atomic_load(&focus_counts[3]),
@@ -388,7 +388,7 @@ static void osk_tick(void)
 }
 
 /* Any thread, on the title's way out: a dialog left up is asked to close. Does not wait. */
-void wowps5_osk_shutdown(void)
+void pokemmops5_osk_shutdown(void)
 {
     if (atomic_exchange(&osk_dialog_up, 0)) osk_dialog_abort();
 }
@@ -427,41 +427,41 @@ static unsigned osk_number(const char *name, unsigned fallback, unsigned low, un
     for (; *text >= '0' && *text <= '9' && value < 100000; text++) value = value * 10 + (*text - '0');
     return *text || value < low || value > high ? fallback : value;
 }
-/* The settings are environment variables: NAME=value lines of /data/wowps5/launch.txt. */
+/* The settings are environment variables: NAME=value lines of /data/pokemmo/launch.txt. */
 static void osk_settings(void)
 {
-    static const char *const variables[OSK_MODES] = {"WOWPS5_OSK_KEYBOARD", "WOWPS5_OSK_CHAT"};
+    static const char *const variables[OSK_MODES] = {"POKEMMOPS5_OSK_KEYBOARD", "POKEMMOPS5_OSK_CHAT"};
     const char *text;
     for (unsigned mode = 0; mode < OSK_MODES; mode++)
         if ((text = getenv(variables[mode])) && !osk_parse_chord(text, &osk.chord[mode]))
-            fprintf(stderr, "[WoWPS5 input] on-screen keyboard: %s is not a list of pad buttons; default kept\n", variables[mode]);
+            fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: %s is not a list of pad buttons; default kept\n", variables[mode]);
     /* A shortcut inside the other would always fire first. */
     if (osk.chord[OSK_KEYBOARD] && (osk.chord[OSK_KEYBOARD] & osk.chord[OSK_CHAT]) == osk.chord[OSK_KEYBOARD])
     {
-        fprintf(stderr, "[WoWPS5 input] on-screen keyboard: the chat shortcut contains the keyboard's; chat shortcut off\n");
+        fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: the chat shortcut contains the keyboard's; chat shortcut off\n");
         osk.chord[OSK_CHAT] = 0;
     }
     else if (osk.chord[OSK_CHAT] && (osk.chord[OSK_KEYBOARD] & osk.chord[OSK_CHAT]) == osk.chord[OSK_CHAT])
     {
-        fprintf(stderr, "[WoWPS5 input] on-screen keyboard: the keyboard shortcut contains the chat's; keyboard shortcut off\n");
+        fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: the keyboard shortcut contains the chat's; keyboard shortcut off\n");
         osk.chord[OSK_KEYBOARD] = 0;
     }
     osk.members = osk.chord[OSK_KEYBOARD] | osk.chord[OSK_CHAT];
-    osk.chord_ms = osk_number("WOWPS5_OSK_CHORD_MS", osk.chord_ms, 20, 500);
+    osk.chord_ms = osk_number("POKEMMOPS5_OSK_CHORD_MS", osk.chord_ms, 20, 500);
     osk.tap_ms = osk.chord_ms < 50 ? 50 : osk.chord_ms;
-    osk.chat_delay_ms = osk_number("WOWPS5_OSK_CHAT_DELAY_MS", osk.chat_delay_ms, 0, 5000);
-    osk.unicode = (text = getenv("WOWPS5_OSK_TEXT")) && (text[0] | 0x20) == 'u';   /* "unicode"; default "keys" */
-    osk.automatic = (text = getenv("WOWPS5_OSK_AUTO")) && text[0] == '1';
-    osk.diagnostic = !!getenv("WOWPS5_INPUT_DIAGNOSTICS");
-    focus_diagnostic = (text = getenv("WOWPS5_FOCUS_DIAGNOSTICS")) && text[0] == '1';
+    osk.chat_delay_ms = osk_number("POKEMMOPS5_OSK_CHAT_DELAY_MS", osk.chat_delay_ms, 0, 5000);
+    osk.unicode = (text = getenv("POKEMMOPS5_OSK_TEXT")) && (text[0] | 0x20) == 'u';   /* "unicode"; default "keys" */
+    osk.automatic = (text = getenv("POKEMMOPS5_OSK_AUTO")) && text[0] == '1';
+    osk.diagnostic = !!getenv("POKEMMOPS5_INPUT_DIAGNOSTICS");
+    focus_diagnostic = (text = getenv("POKEMMOPS5_FOCUS_DIAGNOSTICS")) && text[0] == '1';
 }
-#ifndef WOWPS5_INPUT_TEST
+#ifndef POKEMMOPS5_INPUT_TEST
 static void osk_start(int32_t user)
 {
     osk_user = user;
     osk_settings();
-    if (!osk.members && !osk.automatic) { fprintf(stderr, "[WoWPS5 input] on-screen keyboard: off\n"); return; }
-    fprintf(stderr, "[WoWPS5 input] on-screen keyboard: module=%#x keyboard=%#x chat=%#x chord=%ums text=%s auto=%d\n",
+    if (!osk.members && !osk.automatic) { fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: off\n"); return; }
+    fprintf(stderr, "[PokeMMO PS5 input] on-screen keyboard: module=%#x keyboard=%#x chat=%#x chord=%ums text=%s auto=%d\n",
         osk_module_load(), osk.chord[OSK_KEYBOARD], osk.chord[OSK_CHAT], osk.chord_ms, osk.unicode ? "unicode" : "keys", osk.automatic);
 }
 #endif

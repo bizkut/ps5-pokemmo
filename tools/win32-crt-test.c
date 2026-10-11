@@ -32,8 +32,8 @@ int main(int argc, char** argv) {
     check(argc >= 1, "main receives its arguments");
 
     char text[64];
-    snprintf(text, sizeof(text), "%.3f %d %s", 3.14159, 42, "wow");
-    check(!strcmp(text, "3.142 42 wow") && strtod("0.625", NULL) == 0.625 && atoi("1234") == 1234, "number formatting and parsing, '.' as the decimal point");
+    snprintf(text, sizeof(text), "%.3f %d %s", 3.14159, 42, "poke");
+    check(!strcmp(text, "3.142 42 poke") && strtod("0.625", NULL) == 0.625 && atoi("1234") == 1234, "number formatting and parsing, '.' as the decimal point");
 
     int* numbers = malloc(1000 * sizeof(int));
     for(int i = 0; numbers && i < 1000; i++) numbers[i] = (i * 7919) % 1000;
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 
     char path[MAX_PATH];
     const char* temp = getenv("TEMP");
-    snprintf(path, sizeof(path), "%s\\wowps5-crt-test.txt", temp ? temp : ".");
+    snprintf(path, sizeof(path), "%s\\pokemmops5-crt-test.txt", temp ? temp : ".");
     FILE* file = fopen(path, "w+b");
     int ok = file != NULL;
     if(ok) {
@@ -122,6 +122,6 @@ int main(int argc, char** argv) {
     MatchFunction match = library ? (MatchFunction)GetProcAddress(library, "PathMatchSpecA") : NULL;
     check(match && match("World.exe", "*.exe") && FreeLibrary(library), "LoadLibrary, GetProcAddress, a call into the loaded DLL");
 
-    printf(failures ? "WoWPS5 Win32 crt test FAIL\n" : "WoWPS5 Win32 crt test PASS\n");
+    printf(failures ? "PokeMMO PS5 Win32 crt test FAIL\n" : "PokeMMO PS5 Win32 crt test PASS\n");
     return failures;
 }

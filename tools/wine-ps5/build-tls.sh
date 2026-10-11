@@ -20,7 +20,7 @@ for backend in sysrng-linux.c sysrng-getentropy.c; do
         cp "$root/runtime/wine-ps5/tls-entropy.c" "$src/gnutls-3.8.13/lib/nettle/$backend"
 done
 export CC="$sdk/bin/prospero-clang" AR="$sdk/bin/llvm-ar" RANLIB="$sdk/bin/llvm-ranlib" NM="$sdk/bin/llvm-nm"
-export CFLAGS="-O2 -fPIC" CPPFLAGS="-I$prefix/include" LDFLAGS="-L$prefix/lib"
+export CFLAGS="-O2 -fPIC" CPPFLAGS="-I$root/runtime/wine-ps5/tls-compat -I$prefix/include" LDFLAGS="-L$prefix/lib"
 export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig" PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 jobs=${JOBS:-8}
 compile() {
@@ -34,7 +34,9 @@ compile() {
         if [[ $package == nettle-* ]]; then
             make -j"$jobs" all-here > build.log 2>&1 && make install-here > install.log 2>&1
         elif [[ $package == gnutls-* ]]; then
-            make -C lib -j"$jobs" > build.log 2>&1 && make -C lib install > install.log 2>&1
+            make -C gl -j"$jobs" > build.log 2>&1 &&
+                make -C lib -j"$jobs" >> build.log 2>&1 &&
+                make -C lib install > install.log 2>&1
         else
             make -j"$jobs" > build.log 2>&1 && make install > install.log 2>&1
         fi

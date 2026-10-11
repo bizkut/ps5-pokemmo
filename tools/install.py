@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
-"""Install WoW Forever for PS5 on a console, and copy your own game to it.
+"""Install PokeMMO PS5 on a console, and copy your own portable client.
 
-  python3 install.py --host 192.168.1.50 --wow "/path/to/World of Warcraft"
+  python3 install.py --host 192.168.1.50 --client "/path/to/PokeMMO-Client"
 
-Run it from the unpacked release bundle (the folder that holds title/ and
-runtime/), or name that folder with --bundle. It uploads over the console's
+Run it from the unpacked release bundle (the folder that holds title/, runtime/
+and zink/), or name that folder with --bundle. It uploads over the console's
 FTP server:
 
-  title/PPSA99220      ->  /data/homebrew/PPSA99220      the app (ShadowMount shows it on the home screen)
-  runtime/wowps5       ->  /data/wowps5                  Wine's Windows side and an empty Windows prefix
-                                                         (prefix/drive_c goes to prefix/dosdevices/c:)
-  your game            ->  /data/wowps5/prefix/dosdevices/c:/Games/World of Warcraft   (about 64 GiB)
+  title/PPSA99221   ->  /data/homebrew/PPSA99221   the app (ShadowMount shows it on the home screen)
+  runtime/pokemmo   ->  /data/pokemmo              Wine's Windows side and an empty Windows prefix
+                                                     (prefix/drive_c goes to prefix/dosdevices/c:)
+  your client       ->  /data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO
+  zink/*.dll        ->  beside PokeMMO.exe
 
-Your installation is only read. A file already on the console with the same
-size is skipped, so an interrupted run is continued by running it again.
-Nothing of an account is copied: you sign in on the console.
+Your client is only read. A file already on the console with the same size is
+skipped, so an interrupted run is continued by running it again.
 
-After the game has updated on the PC, run it again the same way (--skip-app
-copies only the game). An update changes files without changing their size, so
-what was sent is remembered in game-sent.json beside this script, and a file
-that has changed on the PC since then is sent again. If the game was copied by
-hand or by an earlier version, there is nothing remembered yet: add
---since "YYYY-MM-DD HH:MM", the time of that copy, to send what changed after it.
+After the client has updated on the PC, run this again the same way (--skip-app
+copies only the client). An update can change files without changing their
+size, so what was sent is remembered in pokemmo-client-sent.json beside this
+script, and a file that has changed on the PC since then is sent again. If the
+client was copied by hand or by an earlier version, there is nothing remembered
+yet: add --since "YYYY-MM-DD HH:MM", the time of that copy, to send what
+changed after it.
 """
 import argparse
 import datetime
@@ -31,10 +32,12 @@ import time
 from ftplib import FTP, all_errors, error_perm
 from pathlib import Path
 
-GAME_TARGET = 'prefix/dosdevices/c:/Games/World of Warcraft'
-SKIP_TOP = {'_classic_', '_retail_', '.battle.net', 'World of Warcraft Launcher.exe'}
-SKIP_FLAVOR = {'WTF', 'Interface', 'Logs', 'Errors', 'Cache', 'Screenshots',
-               'vkd3d-proton.cache', 'vkd3d-proton.cache.write'}
+TITLE_ID = 'PPSA99221'
+RUNTIME_NAME = 'pokemmo'
+CLIENT_TARGET = 'prefix/dosdevices/c:/Games/PokeMMO'
+ZINK_DLLS = ('opengl32.dll', 'libgallium_wgl.dll')
+METADATA_NAMES = {'.DS_Store', 'Thumbs.db', 'desktop.ini'}
+METADATA_DIRS = {'__MACOSX', '.Spotlight-V100', '.Trashes', '.fseventsd'}
 
 
 class Console:
@@ -47,6 +50,15 @@ class Console:
         self.ftp = FTP()
         self.ftp.connect(self.args.host, self.args.port, timeout=600)
         self.ftp.login(self.args.user, self.args.password)
+        try:
+            reply = self.ftp.sendcmd('SELF')
+            if 'enabled' in reply:
+                reply = self.ftp.sendcmd('SELF')
+            if 'disabled' not in reply:
+                raise RuntimeError(f'FTP SELF conversion was not disabled: {reply}')
+        except all_errors as error:
+            if not str(error).startswith('502'):
+                raise
         self.ftp.voidcmd('TYPE I')
 
     def size(self, path):
@@ -111,31 +123,48 @@ def upload_tree(console, source, target, what):
     print(f'  done: {sent} sent, {len(files) - sent} already there', flush=True)
 
 
-def game_files(install):
-    for path in sorted(install.rglob('*')):
-        relative = path.relative_to(install)
-        if relative.parts[0] in SKIP_TOP:
-            continue
-        if relative.parts[0] == '_classic_beta_' and len(relative.parts) > 1 and relative.parts[1] in SKIP_FLAVOR:
-            continue
-        if path.is_file() and not path.is_symlink():
-            yield relative, path
+def is_platform_metadata(relative):
+    return (relative.name in METADATA_NAMES or relative.name.startswith('._') or
+            any(part in METADATA_DIRS for part in relative.parts))
 
 
-def upload_game(console, install, target, since=None):
-    if not (install / '_classic_beta_' / 'WowB.exe').is_file():
-        sys.exit(f'{install} does not hold _classic_beta_/WowB.exe: --wow is the folder with _classic_beta_ and Data in it')
-    files = list(game_files(install))
+def client_files(client, zink):
+    files = {}
+    skip_bin = (client / 'bin').is_dir()
+    for path in sorted(client.rglob('*')):
+        relative = path.relative_to(client)
+        if ((skip_bin and relative.parts[0] == 'bin') or relative == Path('PokeMMO.sh') or
+                is_platform_metadata(relative)):
+            continue
+        if path.is_file():
+            files[relative] = path
+    for name in ZINK_DLLS:
+        files[Path(name)] = zink / name
+    return sorted(files.items(), key=lambda entry: entry[0].as_posix())
+
+
+def validate_client(client, zink):
+    if not (client / 'PokeMMO.exe').is_file():
+        sys.exit(f'{client} does not hold PokeMMO.exe: --client is the portable Windows client folder')
+    missing = [zink / name for name in ZINK_DLLS if not (zink / name).is_file()]
+    if missing:
+        sys.exit('the release bundle is missing WGL/Zink artifact(s): ' +
+                 ', '.join(str(path) for path in missing))
+
+
+def upload_client(console, client, zink, target, since=None):
+    files = client_files(client, zink)
     total = sum(path.stat().st_size for _, path in files)
-    print(f'the game: {len(files)} files, {total / 2**30:.1f} GiB, to {target}', flush=True)
-    record_file = Path(__file__).resolve().parent / 'game-sent.json'
+    print(f'the PokeMMO client: {len(files)} files, {total / 2**20:.0f} MiB, to {target}', flush=True)
+    record_file = Path(__file__).resolve().parent / 'pokemmo-client-sent.json'
     record = json.loads(record_file.read_text()) if record_file.is_file() else {}
     sent_bytes = sent = 0
     started = time.time()
     for relative, path in files:
         now = [path.stat().st_size, int(path.stat().st_mtime)]
         known = record.get(relative.as_posix())
-        stale = known != now if known else (since is not None and now[1] > since)
+        stale = relative.as_posix() in ZINK_DLLS or (known != now if known else
+                                                     since is not None and now[1] > since)
         was_sent = console.send(path, f'{target}/{relative.as_posix()}', stale)
         record[relative.as_posix()] = now
         if was_sent:
@@ -144,9 +173,9 @@ def upload_game(console, install, target, since=None):
             sent_bytes += path.stat().st_size
             if path.stat().st_size >= 64 << 20:
                 minutes = (time.time() - started) / 60
-                print(f'  {relative.as_posix()}: {sent_bytes / 2**30:.1f} GiB sent in {minutes:.0f} min', flush=True)
+                print(f'  {relative.as_posix()}: {sent_bytes / 2**20:.0f} MiB sent in {minutes:.0f} min', flush=True)
     record_file.write_text(json.dumps(record))
-    print(f'  done: {sent} sent ({sent_bytes / 2**30:.1f} GiB), {len(files) - sent} already there', flush=True)
+    print(f'  done: {sent} sent ({sent_bytes / 2**20:.0f} MiB), {len(files) - sent} already there', flush=True)
 
 
 def main():
@@ -157,17 +186,27 @@ def main():
     parser.add_argument('--password', default='')
     parser.add_argument('--bundle', type=Path, default=Path(__file__).resolve().parent,
                         help='the unpacked release bundle (default: where this script is)')
-    parser.add_argument('--wow', type=Path, help='your World of Warcraft folder (the one with _classic_beta_ and Data)')
-    parser.add_argument('--skip-app', action='store_true', help='only copy the game')
-    parser.add_argument('--since', help='after a game update, with no record of an earlier copy: also send game files '
-                                        'changed on the PC after this time ("YYYY-MM-DD HH:MM")')
-    parser.add_argument('--title-dir', default='/data/homebrew/PPSA99220', help=argparse.SUPPRESS)
-    parser.add_argument('--root', default='/data/wowps5', help=argparse.SUPPRESS)
+    parser.add_argument('--client', type=Path, help='your portable Windows client folder (the one with PokeMMO.exe)')
+    parser.add_argument('--skip-app', action='store_true', help='only copy the client')
+    parser.add_argument('--since', help='after a client update, with no record of an earlier copy: also send client '
+                                        'files changed on the PC after this time ("YYYY-MM-DD HH:MM")')
+    parser.add_argument('--title-dir', default=f'/data/homebrew/{TITLE_ID}', help=argparse.SUPPRESS)
+    parser.add_argument('--root', default='/data/pokemmo', help=argparse.SUPPRESS)
     args = parser.parse_args()
     since = datetime.datetime.strptime(args.since, '%Y-%m-%d %H:%M').timestamp() if args.since else None
-    title, runtime = args.bundle / 'title' / 'PPSA99220', args.bundle / 'runtime' / 'wowps5'
+    title = args.bundle / 'title' / TITLE_ID
+    runtime = args.bundle / 'runtime' / RUNTIME_NAME
+    zink = args.bundle / 'zink'
     if not args.skip_app and not ((title / 'eboot.bin').is_file() and runtime.is_dir()):
-        sys.exit(f'{args.bundle} is not an unpacked release bundle (no title/PPSA99220/eboot.bin and runtime/wowps5)')
+        sys.exit(f'{args.bundle} is not an unpacked release bundle '
+                 f'(no title/{TITLE_ID}/eboot.bin and runtime/{RUNTIME_NAME})')
+    if not args.skip_app or args.client:
+        missing = [zink / name for name in ZINK_DLLS if not (zink / name).is_file()]
+        if missing:
+            sys.exit('the release bundle is missing WGL/Zink artifact(s): ' +
+                     ', '.join(str(path) for path in missing))
+    if args.client:
+        validate_client(args.client, zink)
     try:
         console = Console(args)
     except all_errors as error:
@@ -175,11 +214,12 @@ def main():
     if not args.skip_app:
         upload_tree(console, title, args.title_dir, 'the app')
         upload_tree(console, runtime, args.root, 'Wine and the Windows prefix')
-    if args.wow:
-        upload_game(console, args.wow, f'{args.root}/{GAME_TARGET}', since)
+    if args.client:
+        upload_client(console, args.client, zink, f'{args.root}/{CLIENT_TARGET}', since)
     else:
-        print('no --wow given: the game was not copied')
-    print('finished. On the console: "WoW Forever" on the home screen (ShadowMount adds it within a minute).')
+        print('no --client given: the PokeMMO client was not copied')
+    print('finished. On the console: "PokeMMO PS5" on the home screen '
+          '(ShadowMount adds it within a minute).')
     return 0
 
 

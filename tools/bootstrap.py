@@ -34,6 +34,8 @@ def main():
         required = [PINS[name]]
         if name == 'PS5_PayloadSDK':
             required.append(PINS['driverSDK'])
+        if name == 'PS5_Mesa':
+            required.append(PINS['PS5_Mesa_RADV'])
         for revision in required:
             check = subprocess.run(['git', '-C', str(target), 'cat-file', '-e',
                                     revision + '^{commit}'], capture_output=True)

@@ -17,8 +17,8 @@ static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM w, LPARAM l)
 
 int main(void) {
     char text[64];
-    wsprintfA(text, "%d-%s", 42, "wow");
-    check(!strcmp(text, "42-wow") && !lstrcmpiA("WoW", "wow") && CharUpperA((char*)(ULONG_PTR)'a') == (char*)(ULONG_PTR)'A', "user32 string functions");
+    wsprintfA(text, "%d-%s", 42, "poke");
+    check(!strcmp(text, "42-poke") && !lstrcmpiA("PoKe", "poke") && CharUpperA((char*)(ULONG_PTR)'a') == (char*)(ULONG_PTR)'A', "user32 string functions");
 
     printf("info screen %d x %d, %d monitors\n", GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), GetSystemMetrics(SM_CMONITORS));
     check(GetSysColor(COLOR_WINDOW) != 0 || GetSysColor(COLOR_WINDOWTEXT) == 0, "system colours");
@@ -44,7 +44,7 @@ int main(void) {
         SelectObject(other, second);
         check(BitBlt(other, 0, 0, 128, 128, dc, 64, 64, SRCCOPY) && copy && copy[10] == 0x00ff0000 && copy[36 * 256 + 36] == 0x0000ff00, "BitBlt between two bitmaps");
         SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(255, 255, 255));
-        const BOOL drawn = TextOutA(dc, 4, 200, "WoWPS5", 6);
+        const BOOL drawn = TextOutA(dc, 4, 200, "PokeMMO PS5", 11);
         int lit = 0;
         for(int y = 200; y < 232; y++) for(int x = 0; x < 128; x++) lit += bits[y * 256 + x] == 0x00ffffff;
         TEXTMETRICA metrics; GetTextMetricsA(dc, &metrics); GetTextFaceA(dc, sizeof(text), text);
@@ -55,13 +55,13 @@ int main(void) {
     if(dc) DeleteDC(dc);
 
     WNDCLASSA class; memset(&class, 0, sizeof(class));
-    class.lpfnWndProc = procedure; class.hInstance = GetModuleHandleA(NULL); class.lpszClassName = "WoWPS5GdiTest";
+    class.lpfnWndProc = procedure; class.hInstance = GetModuleHandleA(NULL); class.lpszClassName = "PokeMMOPS5GdiTest";
     check(RegisterClassA(&class) != 0, "a window class registers");
     SetLastError(0);
-    HWND window = CreateWindowExA(0, "WoWPS5GdiTest", "test", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, NULL, NULL, class.hInstance, NULL);
+    HWND window = CreateWindowExA(0, "PokeMMOPS5GdiTest", "test", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, NULL, NULL, class.hInstance, NULL);
     printf("info CreateWindowEx returned %p, error %lu\n", (void*)window, GetLastError());
     if(window) DestroyWindow(window);
 
-    printf(failures ? "WoWPS5 Win32 gdi test FAIL\n" : "WoWPS5 Win32 gdi test PASS\n");
+    printf(failures ? "PokeMMO PS5 Win32 gdi test FAIL\n" : "PokeMMO PS5 Win32 gdi test PASS\n");
     return failures;
 }

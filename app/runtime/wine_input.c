@@ -21,14 +21,17 @@ static struct event events[EVENT_CAPACITY];
 static unsigned first, count;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned char secret[32];
+void pokemmops5_cursor_sync(int x, int y, int width, int height);
 
-int wowps5_input_queue(unsigned type, unsigned code, unsigned flags, int x, int y)
+int pokemmops5_input_queue(unsigned type, unsigned code, unsigned flags, int x, int y)
 {
     int accepted = 0;
     pthread_mutex_lock(&lock);
     if (count < EVENT_CAPACITY)
     {
-        events[(first + count++) % EVENT_CAPACITY] = (struct event){type, code, flags, x, y};
+        events[(first + count) % EVENT_CAPACITY] = (struct event){type, code, flags, x, y};
+        if (type == 3) pokemmops5_cursor_sync(x, y, 1920, 1080);
+        count++;
         accepted = 1;
     }
     pthread_mutex_unlock(&lock);
@@ -39,7 +42,7 @@ int wowps5_input_queue(unsigned type, unsigned code, unsigned flags, int x, int 
  * Initialize explicitly from Wine/input after platform_init instead. */
 int _gnutls_global_init_skip(void) { return 1; }
 
-int wowps5_input_read(unsigned *type, unsigned *code, unsigned *flags, int *x, int *y)
+int pokemmops5_input_read(unsigned *type, unsigned *code, unsigned *flags, int *x, int *y)
 {
     int result = 0;
     pthread_mutex_lock(&lock);
@@ -60,7 +63,7 @@ int wowps5_input_read(unsigned *type, unsigned *code, unsigned *flags, int *x, i
 static int get_key(gnutls_session_t session, const char *identity, gnutls_datum_t *key)
 {
     (void)session;
-    if (strcmp(identity, "wowps5-input")) return -1;
+    if (strcmp(identity, "pokemmops5-input")) return -1;
     key->data = gnutls_malloc(sizeof(secret));
     if (!key->data) return -1;
     memcpy(key->data, secret, sizeof(secret));
@@ -108,7 +111,7 @@ static void *input_thread(void *argument)
         gnutls_transport_set_pull_function(session, pull);
         gnutls_transport_set_push_function(session, push);
         if (result >= 0) do { result = gnutls_handshake(session); } while (result == GNUTLS_E_INTERRUPTED);
-        if (result < 0) fprintf(stderr, "[WoWPS5 input] TLS handshake rejected: %s\n", gnutls_strerror(result));
+        if (result < 0) fprintf(stderr, "[PokeMMO PS5 input] TLS handshake rejected: %s\n", gnutls_strerror(result));
         if (result >= 0)
         {
             uint32_t wire[6];
@@ -117,11 +120,11 @@ static void *input_thread(void *argument)
                 struct event event = {ntohl(wire[1]), ntohl(wire[2]), ntohl(wire[3]),
                     (int32_t)ntohl(wire[4]), (int32_t)ntohl(wire[5])};
                 unsigned char ack = 0;
-                if (ntohl(wire[0]) == 0x57503549 &&
+                if (ntohl(wire[0]) == 0x504d3549 &&
                     ((event.type == 1 && event.code <= 65535 && !(event.flags & ~6u)) ||
                      (event.type == 2 && !(event.flags & ~0xd9ffU))))
                 {
-                    ack = wowps5_input_queue(event.type, event.code, event.flags, event.x, event.y);
+                    ack = pokemmops5_input_queue(event.type, event.code, event.flags, event.x, event.y);
                 }
                 memset(wire, 0, sizeof(wire));
                 if (gnutls_record_send(session, &ack, 1) != 1) break;
@@ -135,28 +138,28 @@ static void *input_thread(void *argument)
     return NULL;
 }
 
-void wowps5_input_start(void)
+void pokemmops5_input_start(void)
 {
-    extern void wowps5_devices_start(void);
-    wowps5_devices_start();
-    if (!getenv("WOWPS5_INPUT_TLS")) return;
+    extern void pokemmops5_devices_start(void);
+    pokemmops5_devices_start();
+    if (!getenv("POKEMMOPS5_INPUT_TLS")) return;
     FILE *file = fopen("/app0/wine-input.key", "rb");
-    if (!file) { fprintf(stderr, "[WoWPS5 input] missing run key; input disabled\n"); return; }
+    if (!file) { fprintf(stderr, "[PokeMMO PS5 input] missing run key; input disabled\n"); return; }
     size_t got = fread(secret, 1, sizeof(secret), file);
     int extra = fgetc(file);
     fclose(file);
     remove("/app0/wine-input.key");
     if (got != sizeof(secret) || extra != EOF || gnutls_global_init() < 0)
-    { fprintf(stderr, "[WoWPS5 input] initialization failed; input disabled\n"); return; }
+    { fprintf(stderr, "[PokeMMO PS5 input] initialization failed; input disabled\n"); return; }
     int fd = socket(AF_INET, SOCK_STREAM, 0), one = 1;
     struct sockaddr_in address = {.sin_len = sizeof(address), .sin_family = AF_INET,
         .sin_port = htons(37081), .sin_addr.s_addr = htonl(INADDR_ANY)};
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     if (fd < 0 || bind(fd, (struct sockaddr *)&address, sizeof(address)) || listen(fd, 2))
-    { if (fd >= 0) close(fd); fprintf(stderr, "[WoWPS5 input] listener failed; input disabled\n"); return; }
+    { if (fd >= 0) close(fd); fprintf(stderr, "[PokeMMO PS5 input] listener failed; input disabled\n"); return; }
     pthread_t thread;
     if (pthread_create(&thread, NULL, input_thread, (void *)(intptr_t)fd)) { close(fd); return; }
     pthread_detach(thread);
-    fprintf(stderr, "[WoWPS5 input] authenticated TLS input ready\n");
+    fprintf(stderr, "[PokeMMO PS5 input] authenticated TLS input ready\n");
 }
 #endif

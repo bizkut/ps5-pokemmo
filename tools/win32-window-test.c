@@ -58,7 +58,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LP
         LineTo(dc, client.right, client.bottom);
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, RGB(255, 255, 255));
-        snprintf(text, sizeof text, "WoWPS5 window test: paint %d, timer %d", paints + 1, timers);
+        snprintf(text, sizeof text, "PokeMMO PS5 window test: paint %d, timer %d", paints + 1, timers);
         TextOutA(dc, 40, 140, text, (int)strlen(text));
         DeleteObject(fill);
         DeleteObject(yellow);
@@ -106,7 +106,7 @@ static int text_pixels(void) {
     SelectObject(dc, font);
     SetBkColor(dc, RGB(0, 0, 0));
     SetTextColor(dc, RGB(255, 255, 255));
-    TextOutA(dc, 4, 4, "WoWPS5", 6);
+    TextOutA(dc, 4, 4, "PokeMMO PS5", 11);
     GdiFlush();
     for(i = 0; i < 256 * 64; i++) if(bits[i] & 0xffffff) count++;
     DeleteObject(font);
@@ -129,13 +129,13 @@ int main(int argc, char** argv) {
     MSG message;
     int glyphs;
 
-    printf("WoWPS5 window test: pid %lu thread %lu\n", GetCurrentProcessId(), GetCurrentThreadId());
+    printf("PokeMMO PS5 window test: pid %lu thread %lu\n", GetCurrentProcessId(), GetCurrentThreadId());
     fflush(stdout);
 
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = GetModuleHandleA(NULL);
     window_class.hCursor = LoadCursorA(NULL, (LPCSTR)IDC_ARROW);
-    window_class.lpszClassName = "WoWPS5WindowTest";
+    window_class.lpszClassName = "PokeMMOPS5WindowTest";
     check(RegisterClassExA(&window_class) != 0, "RegisterClassEx");
 
     desktop = GetDesktopWindow();
@@ -161,11 +161,11 @@ int main(int argc, char** argv) {
 
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     SetLastError(0);
-    window = CreateWindowExA(0, window_class.lpszClassName, "WoWPS5 window test", WS_OVERLAPPEDWINDOW,
+    window = CreateWindowExA(0, window_class.lpszClassName, "PokeMMO PS5 window test", WS_OVERLAPPEDWINDOW,
                              100, 100, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, window_class.hInstance, NULL);
     check(window != NULL, "CreateWindowEx");
     if(!window) {
-        printf("WoWPS5 window test FAIL (%d failures)\n", failures);
+        printf("PokeMMO PS5 window test FAIL (%d failures)\n", failures);
         return failures;
     }
     check(creates == 1, "WM_CREATE was delivered during CreateWindowEx");
@@ -238,7 +238,7 @@ done:
     check(raw_inputs >= 1, "raw mouse input reached the window (WM_INPUT)");
     check(destroys == 1 && window_thread == GetCurrentThreadId(), "WM_DESTROY on the creating thread");
 
-    printf("WoWPS5 window test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
+    printf("PokeMMO PS5 window test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     fflush(stdout);
     return failures;
 }

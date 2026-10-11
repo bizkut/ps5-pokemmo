@@ -39,6 +39,8 @@ from pathlib import Path
 
 PS5 = Path(__file__).resolve().parent.parent
 ROOT = PS5.parent
+sys.path.insert(0, str(ROOT.parent / "tools"))
+from release_client_guard import reject_official_client_content  # noqa: E402
 NEVER = ("test-run.txt", "test-results.txt", "screenshots", "klog", ".env", "radv-shader-cache")
 
 
@@ -102,6 +104,7 @@ def main():
     param = json.loads((PS5 / "sce_sys/param.json").read_text())
     title_id = param["titleId"]
     folder = ROOT / "dist" / title_id
+    reject_official_client_content(folder, "the title staging folder")
     parts = json.loads((folder / "licenses/components.json").read_text())
     dirty = [p["id"] for p in parts if p["source"].get("dirty")]
     if dirty:

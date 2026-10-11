@@ -61,6 +61,6 @@ int main(void) {
     if (dual != INVALID_SOCKET) closesocket(dual);
     SOCKET udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); say(udp != INVALID_SOCKET, "IPv4", "a UDP socket"); if (udp != INVALID_SOCKET) closesocket(udp);
     udp = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP); say(udp != INVALID_SOCKET, "IPv6", "a UDP socket"); if (udp != INVALID_SOCKET) closesocket(udp);
-    printf(failures ? "WoWPS5 loopback test FAIL (%d)\n" : "WoWPS5 loopback test PASS\n", failures);
+    printf(failures ? "PokeMMO PS5 loopback test FAIL (%d)\n" : "PokeMMO PS5 loopback test PASS\n", failures);
     return failures;
 }

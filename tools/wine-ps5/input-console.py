@@ -6,11 +6,12 @@
   input-console.py text                 # text read from stdin, never an argument
   input-console.py click X Y            # absolute display coordinates
 
-Launch with WOWPS5_INPUT_TLS=1 after provision. Requires Python 3.13+.
+Launch with POKEMMOPS5_INPUT_TLS=1 after provision. Requires Python 3.13+.
 The key file is private and contains no account credentials.
 """
 import argparse
 import io
+import json
 import os
 import socket
 import ssl
@@ -36,13 +37,13 @@ def connect(settings, key=None):
     context.verify_mode = ssl.CERT_NONE  # Authentication uses the PSK, not X.509.
     context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
     secret = key if key is not None else KEY.read_bytes()
-    context.set_psk_client_callback(lambda hint: ('wowps5-input', secret))
+    context.set_psk_client_callback(lambda hint: ('pokemmops5-input', secret))
     raw = socket.create_connection((settings['host'], 37081), timeout=10)
     return context.wrap_socket(raw, server_hostname=None)
 
 
 def event(channel, kind, code=0, flags=0, x=0, y=0):
-    channel.sendall(struct.pack('!IIIIii', 0x57503549, kind, code, flags, x, y))
+    channel.sendall(struct.pack('!IIIIii', 0x504d3549, kind, code, flags, x, y))
     if channel.recv(1) != b'\x01':
         raise RuntimeError('input event was rejected')
     time.sleep(0.03)
@@ -60,6 +61,8 @@ def main():
     args = parser.parse_args()
     settings = ps5_console.load_settings()
     if args.action == 'provision':
+        param = json.loads((ROOT / 'app/ps5/sce_sys/param.json').read_text())
+        title = param['titleId']
         secret = os.urandom(32)
         fd = os.open(KEY, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         os.fchmod(fd, 0o600)
@@ -68,7 +71,7 @@ def main():
         with FTP() as ftp:
             ftp.connect(settings['host'], settings['ftp_port'], timeout=15)
             ftp.login(settings['ftp_user'], settings['ftp_password'])
-            ftp.storbinary('STOR /data/homebrew/PPSA99220/wine-input.key', io.BytesIO(secret))
+            ftp.storbinary(f'STOR /data/homebrew/{title}/wine-input.key', io.BytesIO(secret))
         print('Provisioned a fresh input key for the next launch.')
         return
     if args.action == 'check-auth':

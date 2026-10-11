@@ -80,7 +80,7 @@ static DWORD WINAPI deep(void* argument) {
     return argument ? frame[sizeof(frame)-1] + 7 : 0;
 }
 
-void WoWPS5MemoryTest(void) {
+void PokeMMOPS5MemoryTest(void) {
     out = GetStdHandle(STD_OUTPUT_HANDLE);
     SYSTEM_INFO system; GetSystemInfo(&system);
     check(system.dwPageSize == 0x1000 && system.dwAllocationGranularity == 0x10000, "Windows reports 4 KiB pages and 64 KiB granularity");
@@ -255,6 +255,6 @@ void WoWPS5MemoryTest(void) {
     for(unsigned i = 0; ok && i < 256; i += 2) ok = HeapFree(heap, 0, blocks[i]);
     check(ok && HeapDestroy(heap), "a private heap allocates 130 MiB in 256 blocks and frees");
 
-    print(failures ? "WoWPS5 Win32 memory test FAIL\r\n" : "WoWPS5 Win32 memory test PASS\r\n");
+    print(failures ? "PokeMMO PS5 Win32 memory test FAIL\r\n" : "PokeMMO PS5 Win32 memory test PASS\r\n");
     ExitProcess(failures);
 }

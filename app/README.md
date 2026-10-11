@@ -1,47 +1,68 @@
-# WoWPS5 Probe
+# PokeMMO PS5 title
 
-A PS5 homebrew title (`PPSA99220`) on RADV, made from the
-[PS5 Vulkan Template](https://github.com/mihawk-99/PS5_VulkanTemplate) foundation at
-`fdd41492`: Sascha Willems' Vulkan example base class with its PS5 hooks, the PS5 layer
-(the launch, the pad, klog, test runs, the build and the console tools), and one
-program, `examples/wowps5probe/wowps5probe.cpp`, grown from the starter sample.
+`app/` is the native title (`PPSA99221`) that hosts one-process Wine and the PokeMMO Windows client. It is based on PS5 Vulkan Template and the upstream title/Wine integration.
 
-## Building and running
+A normal home-screen launch bypasses the sample menu when this file exists:
 
-It builds against my PS5 stack, checked out beside it: PS5_Vulkan (the RADV release
-archive, the link recipe, the native tool and `libc.prx`) and the payload SDK fork
-(`ps5/tools/setup-sdk.sh` installs it at the pinned revision).
-
-```bash
-ps5/tools/build.sh              # dist/PPSA99220/: eboot.bin, sce_sys, shaders, assets
-ps5/tools/deploy.sh             # upload what changed, over the console's FTP server
-ps5/tools/run.sh                # a test run: 300 frames, the last one saved and checked
-ps5/tools/run.sh --menu         # no test: the program, until it ends itself
-ps5/tools/host-reference.sh     # the same frames on this PC's Vulkan driver
+```text
+/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/PokeMMO.exe
 ```
 
-A launch from the home screen starts the program at once. The sticks move the camera,
-OPTIONS or the touch pad shows and hides the settings window, the D-pad and CROSS
-change them, and its Quit ends the title.
+The fallback `pokemmops5probe` sample remains a native diagnostic for the Vulkan, PE-loading, memory and Wine contracts; it is not PokeMMO compatibility proof.
 
-## Growing it
+## Build
 
-- **The program** is one class on the base class, `examples/wowps5probe/wowps5probe.cpp`, with its
-  shaders in `shaders/glsl/wowps5probe/` (GLSL beside the SPIR-V it loads: after changing one,
-  `ps5/tools/compile-shaders.sh wowps5probe`).
-- **A technique from the template's samples** (shadows, deferred lighting, bloom, MSAA,
-  instancing, indirect draws, compute, bindless textures, mesh shaders, ray queries)
-  copies across as it stands: every sample is a class on the same base.
-- **Assets** go in `ps5/assets.json`, each with its origin and licence; only assets
-  with a clear licence are shipped (`ps5/ASSETS.md` is written from it).
-- **More programs**: another `SAMPLE(...)` line in `ps5/src/samples.cpp` turns the
-  title into a menu of them, as Vulkan Template is.
-- How the foundation works, its test runs and its tools: PS5_VulkanTemplate's
-  `ps5/README.md`; the agent skills for this stack are in its `skills/`.
+From the repository root:
+
+```sh
+bash tools/wine-ps5/bootstrap-wine.sh
+bash tools/wine-ps5/build-zink.sh
+bash tools/wine-ps5/build-console.sh --no-deploy
+```
+
+The package is written to `app/dist/PPSA99221/` with `eboot.bin`, `sce_module/libc.prx`, metadata, shaders, assets and component licences.
+
+For the native diagnostic sample only:
+
+```sh
+app/ps5/tools/compile-shaders.sh pokemmops5probe
+app/ps5/tools/run.sh
+```
+
+`app/ps5/tools/link-title.sh` consumes the PS5 Vulkan link recipe's explicit safe stub list. It must not pass every SDK stub to the title converter: `libkernel_web` exposes names whose function pointers are null in a game title.
+
+## PS5 menu artwork
+
+`ps5/sce_sys/pic0.dds` is the selected-tile/menu background; `pic1.dds` is the matching launch background. Both use the user-supplied `background-sky.af44bb53.jpg`. The 2800×900 source was center-cropped to `(600, 0, 2200, 900)` and uniformly resized to 3840×2160 with Lanczos filtering. No text, logo, stretching or icon replacement was added.
+
+The editable 4K PNGs are `ps5/sce_sys/background-source.png` and `launch-background-source.png`. The deployable files are single-level DX10 `BC7_UNORM` DDS textures, as required by the PS5 Vulkan presentation validator. `link-title.sh` copies them into the packaged `sce_sys/` directory.
+
+From the repository root, re-encode the retained composition using the existing native converter:
+
+```sh
+bash vendor/PS5_Vulkan/tools/prepare-assets.sh \
+  --background app/ps5/sce_sys/background-source.png \
+  --bc7enc vendor/PS5_Vulkan/.deps/native/bc7enc_rdo/build-macos/bc7enc \
+  --output-directory app/ps5/sce_sys
+cp app/ps5/sce_sys/pic0.dds app/ps5/sce_sys/pic1.dds app/dist/PPSA99221/sce_sys/
+bash vendor/PS5_Vulkan/tools/validate-assets.sh app/dist/PPSA99221/sce_sys
+```
+
+The macOS encoder was built from the template's pinned `bc7enc_rdo` revision with Homebrew LLVM 23 and `libomp`; Apple Clang's lack of `-fopenmp` support prevents using it for that build. On other hosts, use the encoder path produced by `setup-asset-dependencies.sh`.
+
+The installed backgrounds were read back over FTP and matched the generated DDS files byte-for-byte. Shell/loader caching can delay their visible refresh. The maintainer has explicitly confirmed permission for this repository to redistribute the supplied background and existing icon, but their original artists and open-content licences remain undocumented. They are not covered by the root MIT licence; see the [artwork notice](../ARTWORK.md).
+
+
+## Runtime boundary
+
+- `app/runtime/wine_title.c`: product paths, launch settings, filesystem/syscall wrappers and title shutdown.
+- `app/runtime/wine_devices.c`, `wine_input.c`, `wine_osk.c`: XInput, keyboard/mouse and PS5 on-screen keyboard.
+- `app/runtime/wine_audio.c`: PS5 AudioOut sink for Wine's event-driven mixer.
+- `runtime/wine-ps5/wine-ps5.patch`: Wine server/thread, memory, window, Vulkan, networking and linked-Unix-library changes.
+- `build/ps5-wine/wine-unix.o`: generated Wine Unix side linked into `eboot.bin`.
+
+Internal symbols and diagnostic settings use `pokemmops5` / `POKEMMOPS5`; no compatibility aliases for the template namespace remain.
 
 ## Licences
 
-The foundation is MIT (`LICENSE.md`, Sascha Willems'; the PS5 layer is mine, under the
-same licence). The assets keep their own (`ps5/ASSETS.md`). The built title links the
-PS5 platform layer of my payload SDK fork, which is GPL-3.0, so the title as
-distributed is under GPL-3.0.
+Project-owned title source is covered by the root MIT licence except for the artwork identified in [the artwork notice](../ARTWORK.md). Wine-derived files remain LGPL-2.1-or-later. The linked PS5 platform layer is GPL-3.0-or-later, so distributed title binaries are governed by that licence. Build-generated component notices are staged into the title package.

@@ -35,7 +35,7 @@ static int console_entropy(void *buffer, size_t size)
         else result = random_service ? random_service(out, chunk) : -1;
         if (result != 0)
         {
-            fprintf(stderr, "[WoWPS5 TLS] secure random failed: %#x\n", result);
+            fprintf(stderr, "[PokeMMO PS5 TLS] secure random failed: %#x\n", result);
             return GNUTLS_E_RANDOM_DEVICE_ERROR;
         }
         out += chunk;
@@ -54,10 +54,10 @@ int _rnd_system_entropy_init(void)
     if (!status && bytes == sizeof(kernel_probe))
     {
         use_kernel_random = 1;
-        fprintf(stderr, "[WoWPS5 TLS] kernel secure random available\n");
+        fprintf(stderr, "[PokeMMO PS5 TLS] kernel secure random available\n");
         return 0;
     }
-    fprintf(stderr, "[WoWPS5 TLS] kernel random unavailable: status=%d errno=%d bytes=%zu\n", status, errno, bytes);
+    fprintf(stderr, "[PokeMMO PS5 TLS] kernel random unavailable: status=%d errno=%d bytes=%zu\n", status, errno, bytes);
     if (!random_service)
     {
         /* This is a system SPRX, supported by the platform's module loader. */
@@ -74,7 +74,7 @@ int _rnd_system_entropy_init(void)
         int result, module = sceKernelLoadStartModule("/system/common/lib/libSceRandom.sprx",
                                                      0, NULL, 0, NULL, &result);
         int lookup = module >= 0 ? sceKernelDlsym(module, "sceRandomGetRandomNumber", (void **)&random_service) : -1;
-        fprintf(stderr, "[WoWPS5 TLS] random load=%#x modules=%zu module=%#x lookup=%#x\n", loaded, count, module, lookup);
+        fprintf(stderr, "[PokeMMO PS5 TLS] random load=%#x modules=%zu module=%#x lookup=%#x\n", loaded, count, module, lookup);
         if (module < 0 || lookup < 0)
             return GNUTLS_E_RANDOM_DEVICE_ERROR;
     }

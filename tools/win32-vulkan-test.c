@@ -46,7 +46,7 @@ static int step(VkResult result, const char* what) {
 }
 
 static int fail(const char* what) {
-    printf("FAIL: %s (GetLastError=%lu)\nWoWPS5 Vulkan test FAIL\n", what, GetLastError());
+    printf("FAIL: %s (GetLastError=%lu)\nPokeMMO PS5 Vulkan test FAIL\n", what, GetLastError());
     fflush(stdout);
     return 1;
 }
@@ -91,22 +91,22 @@ int main(int argc, char** argv) {
     const char* missing = NULL;
     int status = 1;
 
-    printf("WoWPS5 Vulkan test: pid %lu thread %lu\n", GetCurrentProcessId(), GetCurrentThreadId());
+    printf("PokeMMO PS5 Vulkan test: pid %lu thread %lu\n", GetCurrentProcessId(), GetCurrentThreadId());
     fflush(stdout);
 
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = GetModuleHandleA(NULL);
     window_class.hCursor = LoadCursorA(NULL, (LPCSTR)IDC_ARROW);
-    window_class.lpszClassName = "WoWPS5VulkanTest";
+    window_class.lpszClassName = "PokeMMOPS5VulkanTest";
     if(!RegisterClassExA(&window_class)) return fail("RegisterClassEx");
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     /* "fullscreen" as the third argument: a borderless window the size of the display, as a
      * game's is. A display that is a fixed-size output only takes a swapchain of its own size. */
     if(argc > 3 && !strcmp(argv[3], "fullscreen"))
-        window = CreateWindowExA(0, window_class.lpszClassName, "WoWPS5 Vulkan test", WS_POPUP, 0, 0,
+        window = CreateWindowExA(0, window_class.lpszClassName, "PokeMMO PS5 Vulkan test", WS_POPUP, 0, 0,
                                  GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), NULL, NULL, window_class.hInstance, NULL);
     else
-    window = CreateWindowExA(0, window_class.lpszClassName, "WoWPS5 Vulkan test", WS_OVERLAPPEDWINDOW, 120, 120,
+    window = CreateWindowExA(0, window_class.lpszClassName, "PokeMMO PS5 Vulkan test", WS_OVERLAPPEDWINDOW, 120, 120,
                              rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, window_class.hInstance, NULL);
     if(!window) return fail("CreateWindowEx");
     printf("PASS: CreateWindowEx\n");
@@ -285,7 +285,7 @@ failed:
     if(instance) vkDestroyInstance(instance, NULL);
     DestroyWindow(window);
     pump();
-    printf("WoWPS5 Vulkan test %s\n", status ? "FAIL" : "PASS");
+    printf("PokeMMO PS5 Vulkan test %s\n", status ? "FAIL" : "PASS");
     fflush(stdout);
     return status;
 }

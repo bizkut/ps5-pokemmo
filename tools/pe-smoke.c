@@ -4,7 +4,7 @@
 #include <windows.h>
 static volatile unsigned long long state;
 static volatile unsigned long long* volatile relocated = &state;
-unsigned long long WoWPS5Smoke(void) {
+unsigned long long PokeMMOPS5Smoke(void) {
     if (*relocated != 0) return 1;
     unsigned long long before=GetTickCount64();
     Sleep(12);

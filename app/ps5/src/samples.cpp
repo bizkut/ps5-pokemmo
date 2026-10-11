@@ -21,7 +21,7 @@
 #include "ps5_samples.h"
 
 #define PS5_SAMPLES \
-	SAMPLE(wowps5probe, true, "WoWPS5 Probe", "WoWPS5 Probe")
+	SAMPLE(pokemmops5probe, true, "PokeMMO PS5 Diagnostics", "PokeMMO PS5 Diagnostics")
 
 #define SAMPLE(id, menu, title, description) \
 	namespace sample_##id { VulkanExampleBase *createExample(); }

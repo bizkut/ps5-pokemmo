@@ -1,0 +1,172 @@
+--- a/src/vulkan/wsi/wsi_common_videoout.c
++++ b/src/vulkan/wsi/wsi_common_videoout.c
+@@ -70,9 +70,17 @@
+ #include <immintrin.h>
+ #include <ps5platform/kernel.h>
+ #include <ps5platform/videoout.h>
++extern int sceVideoOutCursorEnable(int handle, unsigned index, const void *image);
++extern int sceVideoOutCursorDisable(int handle, unsigned index);
++extern int sceVideoOutCursorSetHotSpot(int handle, unsigned index, int x, int y);
++extern int sceVideoOutCursorSetPosition(int handle, unsigned index, int x, int y);
+ #else
+ #include <sys/mman.h>
+ #endif
++
++PUBLIC int wsi_videoout_cursor_set(const uint32_t *image, int hotspot_x, int hotspot_y);
++PUBLIC int wsi_videoout_cursor_position(int x, int y, int space_width, int space_height);
++PUBLIC int wsi_videoout_cursor_disable(void);
+ 
+ /* Buffers in each size's set. */
+ #define VIDEOOUT_BUFFERS 5
+@@ -278,6 +286,13 @@
+       uint8_t *memory;
+    } set[VIDEOOUT_SETS];
+    uint32_t set_count;
++   bool cursor_enabled;
++   const uint32_t *cursor_image;
++   int cursor_hotspot_x, cursor_hotspot_y;
++   bool cursor_positioned;
++   int cursor_x, cursor_y;
++   bool cursor_enable_logged, cursor_position_logged;
++   int cursor_enable_result, cursor_position_result;
+    /* Sizes VideoOut refused: asked again, each would only be refused again. */
+    VkExtent2D refused[VIDEOOUT_REFUSED];
+    uint32_t refused_count;
+@@ -350,6 +365,129 @@
+    struct wsi_image images[];
+ };
+ 
++static int
++videoout_cursor_disable_locked(void)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   if (!out->cursor_enabled)
++      return 0;
++   int result = 0;
++#if defined(__PROSPERO__)
++   if (out->handle >= 0)
++      result = sceVideoOutCursorDisable(out->handle, 0);
++#endif
++   fprintf(stderr, "wsi/videoout: cursor disable handle=%d result=0x%08x\n", out->handle, (unsigned)result);
++   out->cursor_enabled = false;
++   out->cursor_image = NULL;
++   out->cursor_positioned = false;
++   return result;
++}
++
++static void
++videoout_shutdown(void)
++{
++   mtx_lock(&videoout_output.lock);
++   videoout_cursor_disable_locked();
++   mtx_unlock(&videoout_output.lock);
++}
++
++PUBLIC int
++wsi_videoout_cursor_set(const uint32_t *image, int hotspot_x, int hotspot_y)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&out->lock);
++   if (!out->opened || out->handle < 0 || !out->current) {
++      mtx_unlock(&out->lock);
++      return 1;
++   }
++   if (!image) {
++      mtx_unlock(&out->lock);
++      return -1;
++   }
++   if (out->cursor_enabled && out->cursor_image == image &&
++       out->cursor_hotspot_x == hotspot_x && out->cursor_hotspot_y == hotspot_y) {
++      mtx_unlock(&out->lock);
++      return 0;
++   }
++   videoout_cursor_disable_locked();
++   int result = 0;
++#if defined(__PROSPERO__)
++   result = sceVideoOutCursorEnable(out->handle, 0, image);
++   if (result == 0)
++      result = sceVideoOutCursorSetHotSpot(out->handle, 0, hotspot_x, hotspot_y);
++   if (result != 0)
++      sceVideoOutCursorDisable(out->handle, 0);
++#endif
++   if (!out->cursor_enable_logged || result != out->cursor_enable_result)
++      fprintf(stderr, "wsi/videoout: cursor enable image=%p hotspot=%d,%d handle=%d result=0x%08x\n",
++              (const void *)image, hotspot_x, hotspot_y, out->handle, (unsigned)result);
++   out->cursor_enable_logged = true;
++   out->cursor_enable_result = result;
++   if (result == 0) {
++      out->cursor_enabled = true;
++      out->cursor_image = image;
++      out->cursor_hotspot_x = hotspot_x;
++      out->cursor_hotspot_y = hotspot_y;
++      out->cursor_positioned = false;
++   }
++   mtx_unlock(&out->lock);
++   return result;
++}
++
++PUBLIC int
++wsi_videoout_cursor_position(int x, int y, int space_width, int space_height)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&out->lock);
++   const struct wsi_videoout_swapchain *chain = out->current;
++   if (!out->opened || out->handle < 0 || !out->cursor_enabled || !chain ||
++       space_width <= 1 || space_height <= 1) {
++      mtx_unlock(&out->lock);
++      return 1;
++   }
++   /* Cursor coordinates use the registered scanout buffer, not the largest
++    * advertised display mode. Apply the same viewport used to present the
++    * game's image, including any letterboxing. */
++   x = chain->rect.offset.x +
++       (int)((int64_t)CLAMP(x, 0, space_width - 1) * (chain->rect.extent.width - 1) / (space_width - 1));
++   y = chain->rect.offset.y +
++       (int)((int64_t)CLAMP(y, 0, space_height - 1) * (chain->rect.extent.height - 1) / (space_height - 1));
++   if (out->cursor_positioned && out->cursor_x == x && out->cursor_y == y) {
++      mtx_unlock(&out->lock);
++      return 0;
++   }
++   int result = 0;
++#if defined(__PROSPERO__)
++   result = sceVideoOutCursorSetPosition(out->handle, 0, x, y);
++#endif
++   if (!out->cursor_position_logged || result != out->cursor_position_result)
++      fprintf(stderr, "wsi/videoout: cursor position x=%d y=%d scanout=%ux%u viewport=%d,%d %ux%u result=0x%08x\n",
++              x, y, chain->target.width, chain->target.height, chain->rect.offset.x, chain->rect.offset.y,
++              chain->rect.extent.width, chain->rect.extent.height, (unsigned)result);
++   out->cursor_position_logged = true;
++   out->cursor_position_result = result;
++   if (result == 0) {
++      out->cursor_positioned = true;
++      out->cursor_x = x;
++      out->cursor_y = y;
++   }
++   mtx_unlock(&out->lock);
++   return result;
++}
++
++PUBLIC int
++wsi_videoout_cursor_disable(void)
++{
++   struct wsi_videoout_output *out = &videoout_output;
++   call_once(&videoout_once, videoout_output_init_once);
++   mtx_lock(&out->lock);
++   const int result = !out->opened || out->handle < 0 ? 1 : videoout_cursor_disable_locked();
++   mtx_unlock(&out->lock);
++   return result;
++}
++
+ struct wsi_videoout {
+    struct wsi_interface base;
+ };
+@@ -416,6 +554,7 @@
+       fprintf(stderr, "wsi/videoout: sceVideoOutOpen failed: 0x%08x\n", (unsigned)out->handle);
+       return false;
+    }
++   atexit(videoout_shutdown);
+    if (videoout_title_declares_high_frame_rate()) {
+       const int supported =
+          sceVideoOutIsOutputSupported(out->handle, PS5_VIDEO_OUT_MODE_HIGH_FRAME_RATE, NULL, NULL, NULL);

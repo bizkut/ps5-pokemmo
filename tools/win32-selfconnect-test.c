@@ -1,4 +1,4 @@
-/* TCP self-connect wake-up sockets, as used by WowB.exe. MIT license.
+/* TCP self-connect wake-up sockets. MIT license.
  * A non-blocking socket binds loopback, connects to its own port, and is
  * duplicated. Test both immediate receives and select/WSAPoll readiness.
  * The console runner's deadline bounds a broken non-blocking receive. */
@@ -70,6 +70,6 @@ done:
     if (copy != INVALID_SOCKET) closesocket(copy);
     if (sock != INVALID_SOCKET) closesocket(sock);
     WSACleanup();
-    printf("WoWPS5 self-connect test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
+    printf("PokeMMO PS5 self-connect test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     return failures;
 }

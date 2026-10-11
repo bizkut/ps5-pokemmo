@@ -56,8 +56,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(ps5audio);
 /* The title's audio port. open: 1 when grains of that many 16-bit stereo frames
  * can be played at that rate. output: one grain; returns once the port has
  * taken it, below 0 when it was not played. */
-extern int wowps5_audio_open( unsigned int rate, unsigned int grain );
-extern int wowps5_audio_output( const short *frames );
+extern int pokemmops5_audio_open( unsigned int rate, unsigned int grain );
+extern int pokemmops5_audio_output( const short *frames );
 
 #define PS5_RATE      48000
 #define PS5_GRAIN     256
@@ -187,7 +187,7 @@ static BOOL port_available(void)
     BOOL ret;
 
     ps5_enter( &saved );
-    if (ps5_port < 0) ps5_port = wowps5_audio_open( PS5_RATE, PS5_GRAIN ) > 0;
+    if (ps5_port < 0) ps5_port = pokemmops5_audio_open( PS5_RATE, PS5_GRAIN ) > 0;
     ret = ps5_port > 0;
     ps5_leave( &saved );
     return ret;
@@ -592,7 +592,7 @@ static void mixer_loop( void *args )
 {
     static float sum[2 * PS5_GRAIN];
     static short grain[2 * PS5_GRAIN];
-    const BOOL diagnostics = getenv( "WOWPS5_AUDIO_DIAGNOSTICS" ) != NULL;
+    const BOOL diagnostics = getenv( "POKEMMOPS5_AUDIO_DIAGNOSTICS" ) != NULL;
     UINT64 epoch = 0, frames = 0;           /* since the mixer last began to play */
     UINT64 started = 0, grains = 0, audible = 0, refused = 0, held_back = 0, next_report = 0;
     HANDLE events[32];
@@ -658,7 +658,7 @@ static void mixer_loop( void *args )
             frames = 0;
         }
         if (!started) started = now;
-        status = wowps5_audio_output( grain );
+        status = pokemmops5_audio_output( grain );
         frames += PS5_GRAIN;
         grains++;
         if (status < 0) refused++;

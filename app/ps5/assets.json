@@ -1,5 +1,5 @@
 {
-  "comment": "The assets WoWPS5 Probe ships, each with its origin and licence (ps5/tools/build-assets.py). Add each new one here, with its licence: only assets with a clear licence are shipped.",
+  "comment": "The assets PokeMMO PS5 Probe ships, each with its origin and licence (ps5/tools/build-assets.py). Add each new one here, with its licence: only assets with a clear licence are shipped.",
   "sources": {
     "download": "files fetched at pinned SHA-256 hashes into build/ps5/downloads/: the asset pack's (SaschaWillems/Vulkan-Assets at a27c0e584434) whose licences are clear",
     "generated": "ps5/tools/generate_assets.py: geometry and noise written there, or CC0 files it downloads (Poly Haven; Khronos's glTF-Sample-Assets at f36bfdabd1031c3cf6689a50570b8cdf3678b49c) at pinned SHA-256 hashes",
@@ -29,7 +29,7 @@
       "from": "generated",
       "generator": "lantern",
       "used_by": [
-        "wowps5probe"
+        "pokemmops5probe"
       ],
       "title": "Lantern (glTF sample model)",
       "author": "Microsoft (sbtron)",

@@ -2,7 +2,7 @@
  *
  * One source, two images: built with -DEDGE_DLL it is win32-desktop-edge-dll.dll,
  * which the program imports, so the DLL's DllMain runs under the loader lock
- * before main. The environment variable WOWPS5_EDGE selects the case:
+ * before main. The environment variable POKEMMOPS5_EDGE selects the case:
  *
  *   (unset)     the first use of the desktop is on a worker thread that then
  *               exits; two threads create windows at once; a message sent to
@@ -32,7 +32,7 @@ __declspec(dllexport) HWND edge_dll_window(DWORD* error, DWORD* desktop_tid) {
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved) {
     char mode[32];
     if(reason != DLL_PROCESS_ATTACH) return TRUE;
-    if(!GetEnvironmentVariableA("WOWPS5_EDGE", mode, sizeof mode) || strcmp(mode, "dllmain")) return TRUE;
+    if(!GetEnvironmentVariableA("POKEMMOPS5_EDGE", mode, sizeof mode) || strcmp(mode, "dllmain")) return TRUE;
     /* a window made under the loader lock */
     SetLastError(0);
     dll_window = CreateWindowExA(0, "static", "made in DllMain", WS_POPUP, 0, 0, 64, 64, NULL, NULL, instance, NULL);
@@ -85,7 +85,7 @@ static HANDLE go;
 static DWORD WINAPI window_maker(void* argument) {
     HWND window;
     WaitForSingleObject(go, 5000);
-    window = CreateWindowExA(0, "WoWPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, GetModuleHandleA(NULL), NULL);
+    window = CreateWindowExA(0, "PokeMMOPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, GetModuleHandleA(NULL), NULL);
     if(!window) return GetLastError() ? GetLastError() : 1;
     pump(300);
     DestroyWindow(window);
@@ -100,12 +100,12 @@ int main(void) {
     HANDLE threads[2];
     HWND desktop, window, dll_window;
 
-    GetEnvironmentVariableA("WOWPS5_EDGE", mode, sizeof mode);
-    printf("WoWPS5 desktop edge test: mode \"%s\", main thread %lu\n", mode, GetCurrentThreadId());
+    GetEnvironmentVariableA("POKEMMOPS5_EDGE", mode, sizeof mode);
+    printf("PokeMMO PS5 desktop edge test: mode \"%s\", main thread %lu\n", mode, GetCurrentThreadId());
     fflush(stdout);
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = GetModuleHandleA(NULL);
-    window_class.lpszClassName = "WoWPS5EdgeTest";
+    window_class.lpszClassName = "PokeMMOPS5EdgeTest";
     check(RegisterClassExA(&window_class) != 0, "RegisterClassEx");
     dll_window = edge_dll_window(&dll_error, &dll_desktop_tid);
 
@@ -117,7 +117,7 @@ int main(void) {
         printf("INFO: the desktop window belongs to thread %lu now (%s)\n", desktop_tid,
                desktop_tid == GetCurrentThreadId() ? "the main thread: no dedicated desktop thread" : "not the main thread");
         check(desktop_tid != 0, "the desktop window has an owner thread");
-        window = CreateWindowExA(0, "WoWPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, window_class.hInstance, NULL);
+        window = CreateWindowExA(0, "PokeMMOPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, window_class.hInstance, NULL);
         check(window != NULL, "CreateWindowEx after DllMain");
         pump(300);
         check(SendMessageTimeoutA(GetDesktopWindow(), WM_NULL, 0, 0, SMTO_NORMAL, 2000, &reply) != 0, "a message sent to the desktop window returns");
@@ -125,7 +125,7 @@ int main(void) {
         if(dll_window) DestroyWindow(dll_window);
     }
     else if(!strcmp(mode, "exitthread")) {
-        window = CreateWindowExA(0, "WoWPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, window_class.hInstance, NULL);
+        window = CreateWindowExA(0, "PokeMMOPS5EdgeTest", "edge", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 50, 50, 200, 100, NULL, NULL, window_class.hInstance, NULL);
         check(window != NULL, "CreateWindowEx");
         pump(300);
         if(window) DestroyWindow(window);
@@ -162,7 +162,7 @@ int main(void) {
         check(ChangeDisplaySettingsExA(NULL, NULL, NULL, 0, NULL) == DISP_CHANGE_SUCCESSFUL, "ChangeDisplaySettingsEx(NULL) restores the registry mode");
     }
 
-    printf("WoWPS5 desktop edge test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
+    printf("PokeMMO PS5 desktop edge test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     fflush(stdout);
     return failures;
 }

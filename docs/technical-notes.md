@@ -1,223 +1,154 @@
-# Technical notes: what was measured on the console, and why each change exists
+# PokeMMO PS5 technical notes
 
-Updated October 5, 2026. The actual WoW client executes on the PS5, creates a DirectX 12 device and swapchain, and presents frames. The visible login screen and sign-in remain unverified. See the continuation below.
+## Scope
 
-## Passed on firmware 8.20
+This document records Windows x86-64 PokeMMO startup, visible 1920×1080 presentation, the earlier user-confirmed cursor alignment, and subsequently observed ROM loading in a PS5 Wine title. Final D-pad/touchpad UI acceptance, account-login/gameplay correctness, updater support, long-session stability, suspend/resume behavior, and Vulkan/OpenGL conformance are not claimed. The native filesystem Browse button crashed; staging ROMs replaces that workflow, not the dialog implementation.
 
-The bounded PE64 experiment runs a small Windows x64 image in the native folder title. The image uses no CRT, GUI, Wine or Linux runtime. It verifies a relocated data pointer, zero-filled data, the Windows x64 calling convention and import dispatch for Kernel32 GetTickCount64 and Sleep. The result is 42, the intended passing value. Explicit assembly bridges are needed because the Prospero compiler rejects the ms_abi attribute. These preserve Windows nonvolatile registers and provide shadow space. They do not implement Windows exception unwinding across the bridge.
+## Current deployed artifacts
 
-The actual installed WowB.exe and WowB_loader.dll were copied to the private console directory /data/wowps5/client, with complete SHA-256 readback verification. The diagnostic maps their sections and applies 276,214 and 3,035 DIR64 relocations respectively. Both have a TLS directory; the executable also has delayed imports. The executable imports loader ordinal 1; the loader imports Windows OS services across its DLL descriptors. Neither image's entry point or TLS callbacks were executed, and imports are not bound. A successful mapping is not game startup.
-
-The final recorded run is in evidence/native-pe-v1.json. Vulkan compute still passes; the title renders at 59.9 fps and exits through the shell. The six Linux-host checks in tools/check-pe-loader.py cover actual Windows-code execution and rejection of malformed architecture, headers, file/image bounds and overlapping sections.
-
-## Next runtime acceptance image
-
-`tools/win32-runtime-test.c` builds a genuine CRT-free Windows x64 program with standard Kernel32 imports. It creates/joins a thread, verifies per-thread TLS isolation, writes and reads an isolated temporary file, deletes it, emits a passing message and exits via ExitProcess. This test is for the full runtime and must not be passed to the bounded PE smoke loader.
-
-It passes under the installed PC Wine in its own work/win32-test-prefix. That is host evidence only: evidence/win32-runtime-host-v1.json. It does not test initialization of a PE static TLS directory or Windows exception dispatch; those need additional acceptance tests.
-
-Exit statuses: 10–14 indicate TLS/thread failures; 20–23 indicate temporary-file failures; 0 is success.
-
-## Wine integration
-
-Upstream Wine revision 455e3509b98a6919fd4ad1def4803e08c41c03b2 builds x64 Windows ntdll, kernel32 and kernelbase DLLs with the existing MinGW toolchain. These PE-side DLLs need Wine's native dispatcher, loader, server and platform code.
-
-A real SDK cross-build configures Wine for FreeBSD/x64 and compiles native NTDLL objects. Its first link failed on `_Unwind_Find_FDE`, `amd64_get_gsbase`, `amd64_set_gsbase`, `amd64_get_fsbase` and `getfsent`. Claude's parallel workstream owns this integration; source/build results are separate from console validation. Diagnostic configuration disables missing optional graphics/fonts/audio dependencies, so it is not a game-ready runtime.
-
-The public prospero-win-profiles repository reports a working PS5 Windows runtime on firmware 12.02. Its linked runtime source returns 404 here. This does not establish firmware 8.20 compatibility, public source availability or equivalence to Mihawk's PP announcement.
-
-## Console contract for Wine (run 20261004-112024)
-
-`app/runtime/wine_contract_probe.c` measures, inside the native title, the kernel facilities Wine's Unix side is written against. No Wine code runs in it. All 12 of its pass/fail checks pass; raw lines, including the measurements below that are facts and not checks, are in evidence/wine-contract-v1.txt.
-
-- **TEB register.** `sysarch(AMD64_SET_GSBASE)` works and `%gs:0x30` reads through it. The base survives yields, sleeps and signal handlers, and each thread keeps its own. A new thread starts with its creator's base. The saved signal context reports `mc_gsbase` as 0, so Wine must not trust that field. `rdgsbase`/`wrgsbase` raise SIGILL although CPUID advertises them: the syscall is the only route.
-- **Signals.** SIGSEGV handlers run on an alternate stack with the right fault address, `rip` and registers. Editing the saved `rip` resumes elsewhere. Changing a page's protection inside the handler and returning reruns the faulting write, which is Wine's guard-page and write-watch pattern. `pthread_kill` delivers to the chosen thread.
-- **Address space.** Reservations at 0x10000, 0x7ffe0000 (KUSER_SHARED_DATA), 0x140000000 (WowB.exe's preferred base, whole image), 0x180000000 (the loader DLL's) and 4 GiB at 0x10_0000_0000 all succeed, commit, write-protect and release. 0x7ffffffe0000 is refused, so Wine's address-space limit has to sit under 1 TiB. Code written at 0x140000000 runs.
-- **Plain mmap is not enough.** Anonymous `mmap` works but draws on the 417 MiB flexible budget, lands in the GPU window when given no address, and a 1 GiB `PROT_NONE` reservation fails with ENOMEM. `mmap` with `PROT_EXEC` and `mprotect` to read-execute both report success, yet calling into that memory faults. Executable and large memory must come from direct memory (the SDK's `ps5_vrange_*`/`ps5_exec_*`), so Wine's virtual-memory code needs a PS5 backend.
-- **Files.** Private, copy-on-write and shared read-write file mappings work, including write-through.
-- **Server transport.** `socketpair`, descriptor passing with `SCM_RIGHTS`, `poll` and `kqueue` work. The title's libkernel exports no `fork`, `rfork` or `posix_spawn`, which is why the server is planned as a thread in the same process.
-- **Machine.** 16 KiB pages (Wine assumes 4 KiB; it has a host-page-size path that must be switched on), AVX2/FMA present, 12 GiB direct memory free.
-- **Layout.** The title's executable occupies 0x400000–0x1d84000 and `libc.prx` 0x80000000–0x80118000. Between them, and from there to the GPU window at 0x2_0000_0000, the space is free.
-
-`sceKernelGetSystemSwVersion` reports 11.090.001 here, while the earlier loader inspection identified firmware 8.20. I have not established why they differ; a version spoof by the homebrew enabler is the likely cause.
-
-**PP is PS5_Proton.** The SDK's own notes (platform/docs/PROBE.md, include/ps5platform/fdv.h) describe measurements taken on 2026-10-03 "in PS5_Proton's Wine process" and name `wine/ps5/pw_wine_fdv_libc.c` as a consumer. `mihawk-99/PS5_Proton` returns 404, so it exists but is not public. The SDK's `ps5_vrange_commit`, `ps5_exec_*`, `ps5_fdv_*` and elevation client are the parts of it that are public, and this project builds on them.
-
-## Memory layer for Wine (run 20261004-112024)
-
-`runtime/wine-ps5/ps5_mman.c` gives Wine's Unix side `mmap`, `munmap`, `mprotect`, `madvise` and `msync` with the semantics its `virtual.c` is written against, on reservations and direct memory. Anonymous `PROT_NONE` mappings are reservations. Memory with access is direct memory, zeroed, mapped page by page from the 64 KiB unit that covers it. `mprotect` of a reserved page commits it. `PROT_EXEC` is real. File mappings stay the kernel's own, and are refused with `ENODEV` when execute is asked for, which is Wine's cue to read the file into anonymous memory.
-
-- **Host:** `tools/wine-ps5/test-ps5-mman.c` runs it against a Linux model of the console's kernel, 2,861,391 checks including 32,000 random calls compared page by page with a reference. Three injected bugs (no zeroing, no release, no commit) each fail it.
-- **Console:** all 12 checks pass (evidence/wine-mman-console-v1.txt). Exclusive reservations at 0x10000, 0x7ffe0000 and 8 GiB at 0x10_0000_0000; an exclusive mapping over the title's own code is refused; code written then made read-execute runs, and reruns after an in-place rewrite as read-write-execute; a 134 MiB view at 0x140000000 maps in 5 ms; 1 GiB commits in 40 ms; the middle 256 MiB of it is released (0.6 ms) and taken again while both sides keep their contents; 4,096 separate 64 KiB mappings take 212 ms; a file view sits at a fixed address inside the reserved area, copy-on-write, partly replaced by anonymous memory. After everything is unmapped the direct pool is exactly where it started.
-
-Wine's `virtual.c` now runs on this layer on the console; see the next sections.
-
-## What this firmware refuses a title (run 20261004-112024)
-
-Found by running Wine on the console and then measured directly in the probe. Each one stopped Wine until it was handled.
-
-| Call | Console's answer | What Wine gets instead |
-|---|---|---|
-| `dup`, `dup2` | EPERM for every kind of descriptor | A copy made by passing the descriptor over a Unix socket pair. It shares the file position, as `dup`'s would. |
-| `fcntl(F_DUPFD)`, `F_GETFD`, `F_SETFD` | EINVAL | The same socket copy; close-on-exec is a no-op in a process that cannot exec. |
-| `fcntl(F_SETFL, O_NONBLOCK)` on a socket | EACCES, yet the flag is set | Success when `F_GETFL` shows the flag. Pipes and files accept it normally. |
-| `lstat` | EPERM for every path | `stat`. |
-| `chdir`, and any relative path or `.` | EPERM; EINVAL. A title has no working directory | The title keeps one as a path and gives every call an absolute path (`app/runtime/wine_title.c`). Wine lists directories and opens files relative to directory handles through it. |
-| `realpath` | Fails: libc walks the path with `lstat` | The tidy absolute path of something `stat` finds. |
-| Non-blocking sockets by `fcntl(F_SETFL)`, `ioctl(FIONBIO)` or `SOCK_NONBLOCK` | The flag reads back as set, but a receive still waits (measured with a late sender) | `setsockopt(SOL_SOCKET, SO_NBIO)`, Sony's option, which does work. `MSG_DONTWAIT` also works. |
-| `getaddrinfo` | Not exported; the platform layer's only reports failure | The console's own resolver (`sceNetResolverStartNtoa`), IPv4 only. |
-| `gethostbyname`, `getnameinfo`, `gethostbyaddr`, `statfs` | Null or absent | Built on the resolver; numeric form; "no answer". |
-| `fstatfs` (the platform layer's) | No `MNT_LOCAL` flag, so Wine sees a network drive | The flag is added: drive C: is a fixed disk. |
-| `sysconf` processor count and memory size | 16 processors, 540 MiB | 13 (the title's affinity mask) and the 12 GiB direct-memory pool. |
-| `exit`, `_exit` | Kill the title; the console logs a crash | The shell is asked to close the title, as the title's own exit does. |
-| `getcwd` | Resolves into libSceLibcInternal, then jumps to an unmapped address | "No directory"; Wine starts in the Windows directory. |
-| `fchdir`, `getfsstat`, `isatty` | Null: only `libkernel_sys` exports them | An error, an empty mount list, "not a terminal". |
-| `rdgsbase`, `wrgsbase`, `wrfsbase` | SIGILL although CPUID lists FSGSBASE | `sysarch` for GS; FS is never changed. |
-| Descriptor 2 | The null device, and it cannot be replaced | Wine's diagnostics and the program's output are written to klog. |
-| `mc_fpstate` in a signal context | Not floating-point state: the XSAVE image starts 32 bytes later | Wine reads and writes the state there. Restoring what is at `mc_fpstate` faults on a bad MXCSR. |
-
-The probe also checks that every name Wine's native side imports (225 now) is resolved, because the SDK's stub libraries list exports of newer firmware and a missing one is a null pointer that faults only when called.
-
-XCR0 is 7 (x87, SSE, AVX). CPUID leaf 0xD also lists PKRU and LWP, which the kernel has not enabled; Wine already masks with XCR0.
-
-## Wine on the console (October 4)
-
-**Windows programs run through Wine inside the title.** Wine's native side (ntdll's Unix objects, the memory layer and the server as a thread) is one object linked into the title, `build/ps5-wine/wine-unix.o`. A request file in the title's folder names the program; `app/runtime/wine_title.c` starts `__wine_main` before any graphics. The PE side is Wine's own DLLs, built on the PC and staged under `/data/wowps5/wine`. The prefix (registry and directory skeleton) is made on the PC by the same Wine and staged under `/data/wowps5/prefix`, because the console cannot run `wineboot`.
-
-Results, raw lines in evidence/wine-console-programs-v1.txt:
-
-| Program | Console | PC simulation of the console's rules |
-|---|---|---|
-| `win32-runtime-test.exe`: threads, per-thread storage, temp file write/read/delete, exit | PASS | PASS |
-| `win32-memory-test.exe`: 24 checks of Windows virtual-memory behaviour | 21 pass, 3 fail | 21 pass, the same 3 fail |
-| `inproc-server-test.exe`: suspend/resume/terminate, thread contexts, process memory, mappings, opens relative to a directory handle, registry persistence | PASS | PASS |
-| `win32-crt-test.exe`: an ordinary C program (ucrtbase, advapi32, shlwapi): stdio, malloc, threads, floating point, registry, directory listing, system information | PASS | PASS |
-| `win32-net-test.exe`: Winsock: loopback TCP, non-blocking sockets, name resolution, an HTTP request to the internet | PASS | PASS |
-| `win32-gdi-test.exe`: user32 and gdi32: drawing into memory bitmaps through win32u's DIB engine | PASS (text draws nothing: no fonts are installed) | not run |
-| `win32-vulkan-noscreen-test.exe`: Vulkan with no window: an image cleared on the GPU and read back | PASS on "PlayStation 5 GPU (RADV NAVI21)", Vulkan 1.4.354 | PASS |
-| `win32-window-test.exe`: a window, messages, timers, keyboard and mouse input, GDI painting | 21 pass, 1 fails (text: no fonts) | PASS |
-| `win32-vulkan-test.exe 5 -1 fullscreen`: a fullscreen window, a Win32 Vulkan surface and swapchain, frames presented | PASS: 3840x2160 swapchain on the console's display, 301 frames in 5.0 s (60.1 per second) | PASS (on X11 and Wayland) |
-| `win32-d3d12-test.exe`: DirectX 12 with no window: a device, a render target cleared on the GPU and read back | PASS; feature level 11_1 and shader model 6.6 reported | PASS; feature level 12_2 |
-| `win32-d3d12-present-test.exe`: a DirectX 12 flip-model swapchain on a fullscreen window, presented with vsync | PASS: 3840x2160, 297 frames in 5.0 s (59.3 per second) | not run |
-
-What that covers: PE loading and relocation, the syscall and Unix-call dispatchers, the TEB through GS, threads created and joined, Windows exceptions raised from hardware faults and resumed through `NtContinue`, guard pages, generated code, shared sections, file mappings, a thread stack growing through its guard pages, 256 MiB committed inside a 2 GiB reservation, a 130 MiB heap, the registry saved and read back on the next run, the C runtime, sockets and name resolution, windows and their messages, and Vulkan from a Windows program to the console's GPU and display.
-
-**Windows and the desktop.** Stock Wine starts `explorer.exe` as a second process to own the desktop window and load the display driver. Here a thread of the same process does that work, on the Unix side of win32u (the design and its PC verification are in handoffs/in-process-desktop.md). The driver in use is Wine's null driver, selected by `HKCU\Software\Wine\Drivers\Graphics=null` in the shipped prefix.
-
-**Vulkan and the display.** Wine's Vulkan layer calls the RADV driver linked into the title in place of a loaded `libvulkan`. With no display driver loaded, the first surface a program creates for a window is the console's output itself: a `VK_KHR_display` plane in the output's own mode (3840x2160 at 60 Hz on this console's TV), and that mode is what Windows programs are told the display is. Later surfaces are headless. A program whose window is not the size of the display gets a swapchain of another size on that plane; a 1920x1080 one was accepted and ran at 60 per second, but what it looked like is not known.
-
-**DirectX 12.** The translation is vkd3d-proton's `d3d12.dll` and `d3d12core.dll` with DXVK's `dxgi.dll`, the builds GE-Proton ships, placed beside the program and selected with `WINEDLLOVERRIDES=d3d12,d3d12core,dxgi=n`. They are Windows code and run unchanged. Wine's own `dxgi.dll` cannot be used: it pulls in wined3d and OpenGL, which have no Unix side on the console. On the console vkd3d-proton reports feature level 11_1 where the same build reports 12_2 on the PC's RADV; which driver feature makes the difference has not been looked at, and neither has what the client requires.
-
-**Seen on the TV.** On October 4 the tester watched the console's TV during a 20-second run of `win32-d3d12-present-test.exe` (1,201 frames, 60.0 per second) and confirmed the picture. No capture of the output was taken; the colours and any scaling were not described.
-
-Known gaps:
-
-- **4 KiB protection inside a 16 KiB page.** The three memory-test failures. With mixed protections in one host page, Wine grants the union: a write to a read-only 4 KiB page next to a writable one does not fault, and the neighbours of a guard page raise the guard exception. The fix is to trap the host page and single-step permitted accesses; not done. Whether the game depends on it is unknown.
-- **Hazard from the server sharing the process** (not observed): a thread suspended while it holds a libc lock can block the server thread that must resume it.
-- Wine's whole set of Windows-side DLLs is on the console, and its prefix (registry, `system32`) is shipped from the PC. Of the Unix-side libraries ntdll, ws2_32, win32u and winevulkan are linked into the title (`tools/wine-ps5/build-title-object.sh` lists them; ntdll's loader looks them up in a table instead of calling `dlopen`). No sound or cryptography has run there.
-- **No fonts.** win32u has no FreeType on the console and the prefix has no font files, so GDI text draws nothing.
-- **No input devices.** Keyboard and mouse messages work when a program injects them; nothing reads the controller, a USB keyboard or a mouse yet.
-- **DirectX 12 feature level 11_1** on the console, 12_2 on the PC. DirectX 11 (DXVK's d3d11) has not been tried.
-- **Helper processes that do not exist** (measured on the PC, handoffs/in-process-desktop.md): no drive list from mountmgr, no network adapter list from nsiproxy, no services, no raw-input device list. Sockets, name resolution and file access by drive letter are unaffected.
-- Name resolution is IPv4 only.
-
-## The client itself (October 4, evening)
-
-**On the PC, under the console's rules, the client reaches its login screen.** `tools/wine-ps5/run-wow-host.sh <build> <seconds>` starts the installed `WowB.exe` through an overlay of the installation (bubblewrap; nothing is written to the real folder, nothing signs in), with vkd3d-proton and DXVK's DXGI in the test prefix. `HEADLESS=1` runs it inside a headless gamescope and saves what it draws; `CONSOLE=1` gives a single-process build what the title has (no display driver, only the Unix libraries linked into the title).
-
-| Wine build | Result |
+| Artifact | SHA-256 |
 |---|---|
-| Stock Wine 11.18 (control) | DirectX 12 device created, keeps running |
-| `work/wine-memsim-host`: this Wine, console memory rules, several processes | login screen drawn (evidence/wow-login-ps5-memory-rules-pc.jpg) |
-| `work/wine-desktop-host`: the same in one process, as on the console | login screen drawn |
-| the same with `CONSOLE=1` | DirectX 12 device created, keeps running (nothing to capture: no window system) |
+| Local `app/dist/PPSA99221/eboot.bin` (SELF) | `08457b842fe81410d440026916d86c48b9c59a70583a4ea16a1216611ba79866` |
+| Local `app/build/ps5/eboot.elf` | `8f10cb94b7b27ea8411ab06db8ad6ff9b590a56d8fd623301ce9858c584a4e72` |
+| FTP readback of installed `eboot.bin` (ELF) | `3f11837d988a2a09a1a1e42450f43ad380b931e970ba2e299c4c7eb429bef573` |
+| Patched RADV archive | `14bf540e566960222a317abb3f30fb00118688975d3bef98f7fef127257c1c52` |
+| Mesa WGL `opengl32.dll` | `1c41dae3157752809f95e4ee30a5c0871f3dae99bc9adfd59abcfca4af0025ea` |
+| Mesa Zink `libgallium_wgl.dll` | `f509774d3961241371ab6b658465898e4a04778b6821234d8cc43b39139926dc` |
+| User-supplied `PokeMMO.exe` revision `32920` | `127bd84a3010fa8cfc4b3a7816c9caa085d9035f819df092a42a9f152b679baf` |
+| Menu/launch backgrounds (`pic0.dds`, `pic1.dds`) | `63966cfef5ebedb7cdc5878b9d2656a4cfe61289f7158ee2ec8c0de6aa65e19b` |
 
-Two things the client's loader (`WowB_loader.dll`) does had to be met, and both are now also checked by `win32-memory-test.exe` (21 of 24 pass on the console and in the simulation; the three failures are the old ones):
+The console FTP readback exposes a 34,219,504-byte ELF, not the uploaded SELF container. Its loadable program-header entries and every `PT_LOAD` payload match the local ELF byte-for-byte. Non-load metadata differs, so neither whole-file equality nor equality with the SELF hash is claimed. The current receipt is `build/runs/pokemmo-input-correction-receipt.json`; the earlier alignment proof is retained separately as `pokemmo-measured-cursor-receipt.json`. Both installed background DDS files matched their generated files byte-for-byte; their receipt is `build/menu-art/deployment-receipt.json`.
 
-- **One section, mapped once to write and once to run.** The loader puts a section with no file in the executable's place and keeps a second, writable view of it. File pages do not run on the console, so the memory layer holds such a section in direct memory and maps that memory at every view (`ps5_mman.c`, "objects"; Wine now asks for execute permission when it maps a shared view that is to run, since the layer has to know at that point).
-- **Code sealed page by page.** The loader makes all 18,591 pages of the executable's code inaccessible and puts each right in the exception its first access raises. A 16 KiB host page has one protection for its four Windows pages; with Wine's rule (grant what any of the four allows) the three pages beside an opened one were reached without the exception and ran as they were. A host page of an image or of an executable section view now stays closed while one of its pages is inaccessible and none is writable, and an access its own page allows is reported to the program as a read of the sealed page beside it; the handler opens that page, and after at most three such exceptions the host page is whole. A handler that itself touches the host page it was called for (this one reads the image header, which shares a host page with the first pages of code) is let through. The program sees exceptions for pages it had not touched; this handler does not mind. The general case (data pages, the three failing checks) still needs single-stepping.
+## Observed startup receipt
 
-Only one more Unix library turned out to be needed to start: crypt32 (now linked into the title). secur32 and dnsapi fail to initialise without harm until sign-in.
+The startup records and corrected run (`build/runs/pokemmo-measured-cursor-fix.klog`) establish these milestones:
 
-**On the console the client now reaches its login screen** (see "Console continuation" below and handoffs/2026-10-05-input-tls-continuation.md). What follows is how it first failed there, kept because each cause was a property of the console or of these tools, not of the client.
+1. The title started Wine with `C:\Games\PokeMMO\PokeMMO.exe`, `/data/pokemmo/wine`, and `/data/pokemmo/prefix`.
+2. Wine loaded the main PE at `0x140000000`, the expected preferred base for the 64-bit image.
+3. PokeMMO identified GraalVM Community Java 25.0.4, revision `32920`, Windows 10/amd64 and `C:\Games\PokeMMO` as client home.
+4. The client wrote `config/main.properties` and its console/mod logs inside the staged client directory.
+5. Wine selected the application-local native `opengl32.dll` and `libgallium_wgl.dll`, while `vulkan-1.dll` and `winevulkan.dll` remained Wine builtins.
+6. PokeMMO reported:
+   - vendor: Mesa;
+   - renderer: `zink Vulkan 1.4 (RADV NAVI21)`;
+   - version: OpenGL 4.6 Compatibility Profile, Mesa 26.2.0 at `15a5e9933e`;
+   - eight MSAA samples and a 16384 maximum texture size.
+7. Wine assigned the display to the real 1920×1080 window; RADV registered one 1920×1080 VideoOut buffer set. PokeMMO's viewport/backbuffer also reported 1920×1080.
+8. Only successful presents to the physical display surface count toward removing the splash. A successful headless present is not evidence of a visible game frame.
+9. PokeMMO detected one XInput controller (vendor `1356`, product `3302`), generated its default theme/font atlases, opened PS5 audio at 48 kHz stereo, and loaded the Main Feed from mirror 0.
+10. No client `ERROR`, exception or fatal record appeared in `log/console.log` through the bounded first-frame run.
 
-First, two attempts that each ended in a frozen console that the tester had to restart:
+The user confirmed “Aligned and working” for the earlier left-stick/Cross cursor build. That mapping was later replaced at the user's request by an always-enabled right-stick cursor plus normal left-stick/Cross gamepad controls, with D-pad movement assist and touchpad tapping. Current native counters record three physical primary-click down/up pairs, 34,200 D-pad-assist samples, zero queue-rejected stick moves and no recognized taps during the captured session. These are event-path observations, not final UI acceptance; the user moved on to the menu-background request before confirming the corrected controls.
 
-- The client got through library start-up and into the loader, then two threads overflowed their stacks. Cause, found from the trace of the second attempt: the console held two builds of `ntdll.dll`, an older one in Wine's own folder (the one loaded) and a newer one in the prefix's system folder. The loader restores ntdll's code from the file in the system folder, and code from one build then ran against the read-only data of the other (a jump table read from the middle of a string). `stage-console.py` had skipped the rebuilt file because its size was unchanged; it now compares contents against a record of what it sent (`work/console-staged.json`), and `--system32` puts each module in both folders.
-- **Why the console froze.** The process, asked to exit, was not gone within 60 seconds; the console's log shows `sceApplicationExitSpawn3 ... has been timed out (60081 msec). sceKernelTerminateSysCore()`, after which the shell's main thread stays frozen and, the first time, file operations on `/data` stopped answering some minutes later. What held the process: Wine's threads abort singly on a stack overflow, leaving a title with no main thread; and a section with no file was a temporary file on `/data`, so its views were about 240 MiB of pages for the kernel to write out during exit, while four uploads were writing to the same storage (prospero-win reports the same hazard in its patch 0730). The second freeze was an operator error: a run request the title had never read was still on the console after the restart, and a probe run started the client from it.
-- What was changed for it (all of it since run on the console: the client's runs end inside the title's own time limit and the title closes cleanly): sections with no file live in direct memory and their file stays empty (the server declares them with `ps5w_section`); a stack overflow ends the whole title; a run has a time limit inside the title (`WOWPS5_DEADLINE`, set by `run-console.py`), after which, and after any exit the shell does not complete in 20 seconds, the process ends itself; views of real files are written out before the title asks to be closed (`ps5w_flush`); `run-console.py` removes a request the title did not read.
+Clicking the filesystem Browse button on the earlier build terminated the client; the captured tail contains GraalVM fatal diagnostics and exit status 3, but not enough of the stack to identify its cause. The later input-correction run loaded ROMs without that dialog, as described below.
 
-Then, with the console restarted and those changes deployed:
+## Graphics path
 
-- **Wine's own code cannot be read.** A title's code is execute-only on the console, and the game's protection follows the jump in ntdll's `__wine_unix_call` and reads what it finds: `SYSTEM_XO_VIOLATION`, which ends the title with no signal to handle. Windows code is now given readable stubs for the two native dispatchers (`virtual_readable_entry`).
-- **A dialog nobody could see.** Without its settings folder the client opens its language list first, an ordinary Windows dialog, and waits. A short `WTF/Config.wtf` (text and audio locale) answers it; nothing of the account was copied.
-- **Which build of the core modules.** `stage-console.py` used to send ntdll, kernel32 and kernelbase from its default tree with every test program, so the console kept ending up with one build in Wine's folder and another in the system folder, and the client's loader restores ntdll's code from the system folder's copy. It now sends modules only when asked.
-- Measured on the console (`win32-sync-bench.exe`): 35 microseconds for an event, mutex or semaphore operation and 17 for a plain server call (there is no NTSYNC outside Linux), 31 for one `mprotect`, 0.7 ms for a 64 KiB write to `/data`. File locks, overlapped and completion-port I/O, shared writable file views and ordinary loopback socket pairs pass there (`win32-file-test.exe`, `win32-loopback-test.exe`).
-- `WINEPS5_THREAD_POSITIONS=<seconds>` prints where every thread is and what its stack holds, for a program that has stopped advancing where no debugger attaches. It showed the client's threads all parked, the main thread polling after writing a wake-up byte to a socket; the cause is the first paragraph of the next section.
+PokeMMO uses LWJGL/OpenGL. Linking the separate native `ps5-opengl` fullscreen EGL stack would create a second presentation and allocator owner inside the Wine/Vulkan title. The selected path instead preserves one display backend:
 
-The client's file copy completed in four streams. On October 5 all 64 data archives matched the installed PC files by FTP size (67,339,757,385 bytes); this is not a complete hash verification. A title cannot find out how much space the console has: `fstatfs` is answered by the platform layer with fixed numbers.
+```text
+PokeMMO / LWJGL WGL
+  -> application-local Mesa opengl32.dll
+  -> libgallium_wgl.dll / Zink
+  -> Wine builtin vulkan-1.dll / winevulkan
+  -> PS5 win32u display bridge
+  -> linked RADV
+  -> VideoOut
+```
 
-## Console continuation (October 5)
+`tools/wine-ps5/build-zink.sh` builds only the Windows x86-64 WGL frontend plus Zink from the pinned PS5 Mesa source. zlib is statically linked. The script rejects an extra DLL, Windows Vulkan loader or ICD in its install closure.
 
-The next startup stall was reproduced in a small Windows program: a TCP socket connects to its own bound loopback endpoint, then sends through a duplicated handle. On PS5 connect/send succeed but the byte never arrives, even in a direct nonblocking receive. On the PC the same test passes. Wine's PS5 server now refuses this unsupported self-connect with STATUS_CONNECTION_REFUSED; the client takes fallback paths. Ordinary IPv4/IPv6 loopback and timeout tests still pass.
+A Wine-internal OpenGL root-context attempt logs a non-fatal failure before the application-local Mesa DLLs load. PokeMMO subsequently creates its WGL context successfully and reports the Zink renderer above.
 
-With `WINEDLLOVERRIDES=d3d12,d3d12core,dxgi=n;winemenubuilder.exe=d` and `VKD3D_CONFIG=single_queue`, the actual client creates a DirectX 12 device on the console GPU, a 3840×2160 three-image swapchain, and presents frames near 60 fps. Runs close through the shell at their deadlines without freezing the console. The visible login screen has since been confirmed, by a screenshot the client saved on the console (evidence/wow-native-ps5-login-20261005.jpg) and by the tester at the TV. Missing audio produces handled VoiceSpeakManager ASSERTSAFE reports, and HTTPS/Schannel is incomplete; authentication has not been attempted. [Detailed handoff](handoffs/2026-10-05-socket-continuation.md), [evidence](evidence/wine-selfconnect-console-v1.json).
+## Black-screen root cause and 1080p policy
 
-## The title as an app (October 5, later)
+The pre-fix window trace (`build/runs/pokemmo-window-trace.klog`) identifies a hidden **WineD3D fake window** with a 123×0 client surface. It claimed the sole PS5 display first and allocated a clamped 123×1 swapchain; the real SDL game window subsequently received a headless surface. This explains why the previous third-present marker could coexist with a black screen.
 
-- **Started from the home screen.** With no run request the title starts the installed client itself (`wowps5WineStartIfRequested` in `app/runtime/wine_title.c`): `WINEDLLOVERRIDES=d3d12,d3d12core,dxgi=n;winemenubuilder.exe=d`, `VKD3D_CONFIG=single_queue`, no time limit. `/data/wowps5/launch.txt`, if present, adds or replaces settings (`NAME=value`, `+argument`, `#` comments) and stays in place. Before this a home-screen start ran the probe samples and ended after 15 seconds. A run request still gets a time limit, 600 seconds unless it names one.
-- **Splash.** The console's splash is kept until the program has presented three frames (win32u calls `wowps5_first_frame`), and goes after 30 seconds regardless.
-- **Name and art.** `app/ps5/sce_sys`: "WoW Forever", a 512 pixel icon, and `pic0.dds`/`pic1.dds` (3840x2160 BC7, made with `jellyfin-ps5/app/tools/png_to_bc7_dds.py`) composed from the client's own logo and login scene; sources in `work/app-assets/`. The console reads a title's name and art only when it is registered: deleting the home-screen tile makes ShadowMount+ register the folder again (its log: "Installing: WoW Forever ... Installed NEW!"), which copies `sce_sys` to `/user/app/PPSA99220/sce_sys`. The deploy tool skips a file whose size is unchanged, which a re-encoded picture always is; `app/ps5/tools/deploy.sh` now always sends the three art files. The size the console shows is that of the title folder (about 0.3 GB); the 69.3 GB of Wine, prefix and game under `/data/wowps5` are not counted, and correcting that means editing the console's `app.db` (not done).
-- **kstuff.** ShadowMount+ pauses kstuff 15 seconds after the title starts and resumes it when the title stops or loses focus (`/data/shadowmount/debug.log`: "auto-paused for PPSA99220"). Nothing in the title does this.
-- **Frame rate.** The driver's display surface offers FIFO presentation only (vendor/PS5_Vulkan/docs/M5_PHASE_C.md), so frames follow the display's refresh, 60 Hz at 3840x2160 on this TV, whatever the client's vsync setting.
-- **Frame rate, uncapped (2026-10-05).** `runtime/radv-ps5/videoout-mailbox.patch` adds `VK_PRESENT_MODE_MAILBOX_KHR` to the driver's display code, applied to the pinned PS5_Mesa revision by `tools/wine-ps5/build-radv.sh` (the archive goes to `build/radv/`, which the title's link prefers; PS5_Vulkan's tree and archive are left as they were). FIFO flips every frame a vblank apart, which is the cap. MAILBOX keeps the latest finished frame and flips it after the vblank that showed the one before, giving the frames in between their buffers back unshown: four images (on screen, flipped and yet to show, finished and waiting, being drawn), no tearing. vkd3d-proton presents in it when the game's vertical sync is off (it asks which modes are compatible with FIFO and changes mode from present to present). `PS5_VIDEOOUT_MAILBOX=0` in `/data/wowps5/launch.txt` leaves the mode out. On the console with vertical sync off the client drew 76 to 99 frames a second in the world, where it had 60 (`PS5_VIDEOOUT_STATS=1` prints, every ten seconds, how many frames were presented and how many were replaced before a refresh, and traces each swapchain made and destroyed with every buffer's state).
-- **A second device in one run (2026-10-05).** Some video settings (triple buffering) make the client destroy its Direct3D device and make another. The picture then stayed as it was, or black, with the client running on: win32u gave the console's display to the first surface a program created and kept it taken for good, so the new device's surface was a headless one (the tell: `Got 4 swapchain images` with no `created chain` trace from the display code). `ps5_display_surface_create` now records the host surface that has the display, and `vkDestroySurfaceKHR` gives the display back with it (`dlls/win32u/vulkan.c`). Confirmed by the tester.
-- **Sound.** mmdevapi loads a driver's Unix library by name, so the driver is one Unix source outside Wine's makefiles, `runtime/wine-ps5/wineps5_audio.c`, linked into the title as `wineps5.so`; the in-process server makes `ps5` the default audio driver; `app/runtime/wine_audio.c` owns the `sceAudioOut` port (48 kHz, 16-bit stereo, 256-frame grains). On the console `win32-audio-test.exe` passes (WASAPI and winmm, three tones) and the tester heard it; the client's own stream carries sound about eight seconds after start. `WOWPS5_AUDIO=0` turns it off, `WOWPS5_AUDIO_DIAGNOSTICS=1` logs the mixer. PC check: `tools/wine-ps5/test-audio-host.sh`.
-- **On-screen keyboard.** `app/runtime/wine_osk.c` (included by `wine_devices.c`): L3+R3 opens the console's keyboard (`sceImeDialog`, sysmodule 0x0096) and types the result at the focus as key events; A second shortcut that does the same between two Enters, for chat, is off unless `WOWPS5_OSK_CHAT` names one (for example `OPTIONS+L3`). Settings in `launch.txt`: `WOWPS5_OSK_KEYBOARD`, `WOWPS5_OSK_CHAT`, `WOWPS5_OSK_CHORD_MS`, `WOWPS5_OSK_TEXT=keys|unicode`. On the console the dialog opens and takes text; `sceImeDialogGetResult` returned 0x80bc0032 until its result structure was zeroed first. Whether the text then reaches the client's edit box has not been confirmed. Opening automatically when an edit box takes focus is not implemented (the client draws its own boxes; the IME calls it makes would have to be measured first). Host test: `tools/native-osk-test.c`.
-- **Seeing what a home-screen session does.** `tools/wine-ps5/klog-record.py` keeps the console's log on the PC (`work/klog-live/`). `WINEPS5_PROFILE=<seconds>` in `launch.txt` samples every thread twenty times a second and prints the most counted places each period (a thread in Wine at the address its call came from, which names the system call; a thread in the program at its 4 KiB page). Idle waits are counted too and have to be read past.
+The Wine patch now keeps helper surfaces smaller than 320×200 headless and leaves the display available for the game. Display ownership is released when that surface is destroyed. This is a single-display policy, not general multi-window compositing.
 
-- **Where loading time went, and the first remedy.** A profiled start through sign-in, character list and entering the world showed about two and a half threads' worth of time, throughout loading, inside `NtClose`, `NtCreateEvent` and `NtSetEvent`: requests queued for the one server thread (the client's own threads and its protection thread make them constantly), with the main thread a further 7% in `NtWriteFile`. Requests that only touch handles and synchronisation objects now run on the calling thread under a server lock (`wine_server_call_direct`, ported from prospero-win's patch 0770; `WINEPS5_SERVER_DIRECT=0` puts everything back on the pipe). `win32-sync-bench.exe` on the console: an event, semaphore or mutex operation 35 to 7.7 microseconds, a zero-timeout wait 24 to 9.3, duplicate-and-close 37 to 11, a two-thread event round trip 40 to 18.5. The client starts and presents at 60 frames a second with it (swapchain 16 seconds after start, first sound at 25). What remains per call is mostly the system calls around it (signal masking); requests not on the list (`GetHandleInformation`, 17 microseconds) are unchanged.
-- **Per-call costs removed after that (2026-10-05).** Measured with `win32-sync-bench.exe` and the cost probe on the console, each fixed in the title rather than in the client:
+`app/runtime/pokemmo_config.c` updates only five launch-owned properties: windowed mode, width 1920, height 1080, maximization off, and software cursor off. Other settings, including ROM paths, are preserved. The real 4K Wine desktop/output mode remains available; its 1080p client window is presented full-screen by VideoOut. Forcing a 1080p desktop instead made this client maximize to 1920×1054; the attempted 1928×1114 desktop produced 1928×1088 and a 1440p scanout set. Neither experiment is in the final build.
 
-  | What | Before | After | How |
-  | --- | --- | --- | --- |
-  | `QueryPerformanceCounter` (`clock_gettime(CLOCK_MONOTONIC)`) | 20 µs | 86 ns | `wowps5_clock_gettime` reads the TSC (`sceKernelGetTscFrequency`), anchored once |
-  | an appended 80-byte `WriteFile` (a log line) | 4.3 ms | 27 µs | write-behind per descriptor in `app/runtime/wine_title.c`: 64 KiB buffers, flushed every 250 ms, on close, on exit, and before any read, seek, stat or mapping of that file; mapped files are written straight through; `WOWPS5_WRITE_BEHIND=0` turns it off |
-  | `Sleep(0)`, `SwitchToThread` | 70 µs | 1.8 µs | `NtYieldExecution` no longer asks `getrusage` twice whether it switched (67 of the 70), and only every sixteenth yield of a thread is a real `sched_yield` (25 µs there with nothing to run); the others pause the processor |
-  | event, mutex, semaphore operation | 35 µs | 3 to 6 µs | direct server calls, above |
+## Pointer coordinate contract
 
-  `Sleep(1)` is 1.14 ms and needs nothing. Still as they were: a request that goes to the server thread, 16 µs; a 64 KiB write at an explicit offset, 0.7 ms; `mprotect`, 31 µs.
-- **What a start to the login screen is made of now.** A profiled start (`WINEPS5_PROFILE=5`) is almost entirely waiting: of about 92,000 samples, under 1,500 are in the client's code. The main thread sleeps between frames from about the twentieth second. The three threads that do the client's file requests make an event for each request and close it again (`NtCreateEvent`, `NtWaitForSingleObject`, `NtClose`); `win32-sync-bench.exe` has that pattern as "event per request": 13.8 µs alone, 27.5 µs each with three threads at it, so the server lock serialises them but does not collapse. The profiler now also prints how many requests of each kind went to the server thread and how many ran directly (`requests <round>: server|direct <number> <count>`, numbers in the order of `enum request`), to choose what to make direct next.
-- **The count, and what it led to (2026-10-05).** A start to the login screen made about a million each of `create_event`, `event_op`, `select` and `close_handle` in forty seconds, all direct, and almost nothing else (the next kind, `remove_completion`, 22,000 through the server thread). It is the client handing a job to a worker thread with an event made for that job. Three changes followed:
+The cursor plane was adapted from the local `ps5-proton/ps5-wow` GPU-title implementation. It shares RADV's existing VideoOut handle and mutex; it does not open another presenter. Cursor coordinates are mapped through the active swapchain viewport into its registered scanout buffer. On the verified run, source `(960,540)` mapped to scanout `(960,540)` in a 1920×1080 set. The copied fixed-4K conversion had incorrectly doubled these coordinates.
 
-  | What | Before | After | How |
-  | --- | --- | --- | --- |
-  | condition variable ping-pong between two threads | 11.7 µs | 0.43 µs | `NtWaitForAlertByThreadId` keeps the alert in the thread's entry and watches for it for 40 µs (`WINEPS5_WAIT_SPIN`, microseconds; 0 sleeps at once) before sleeping in its kqueue; `NtAlertThreadByThreadId` triggers the queue only for a thread that sleeps |
-  | event per request, three threads at once | 27.5 µs | 17.7 µs | `server_enter_uninterrupted_section` tries the lock 200 times before sleeping for it (the handle-cache lock in `NtClose`) |
-  | event per request, one thread | 13.8 µs | 4.8 µs | sections that must not be interrupted are counted instead of masked (`block_signals`/`restore_signals` in ntdll's `server.c`): the SIGINT, SIGQUIT and SIGUSR1 handlers note the signal and return, and it is sent again when the last section ends. Two `pthread_sigmask` calls were 1.8 of a direct request's 3 µs. `WINEPS5_DEFER_SIGNALS=0` masks as Wine does |
+Wine's **hardware-input** API takes absolute **screen pixels**. It must not be confused with `NtUserSendInput`'s normalized 0–65535 input. A real PS5 Win32 probe proved three positioned clicks at client `(960,540)`, `(100,100)` and `(1819,979)`, checking both mouse-message coordinates and `GetCursorPos`/`ScreenToClient`. Separate and combined move/button forms passed (`cursor-contract-raw-pixels.klog`, `cursor-contract-combined-clicks.klog`).
 
-  The same start then made half as many of those requests (0.49 million) and its busy phase ended about 25 seconds in instead of 40. What bounds it now is one client thread at 100% in its own code and in ntdll's stack unwinding (`RtlVirtualUnwind`, `RtlLookupFunctionEntry`): the client's work, the same under any Wine. Watching the server's wake-up flag before reading the wait pipe (`ps5w_wake_flags`) is in, and measured no gain: an event round trip between two threads stays at 16 to 18 µs.
+Native stick, touchpad and USB motion now share one client-space pointer. Native actions carry their pointer position with each event; Wine maps it through the foreground client's origin. The queue publishes a coherent atomic coordinate pair before dispatch, and Wine serializes the drain across message-pump threads. There is no post-dispatch global cursor readback to overwrite newer queued motion. Native raw deltas are preserved with `SEND_HWMSG_RAWINPUT`, and button releases survive loss of the foreground client rectangle.
 
-  One thing not understood: with the counted sections, `SetEvent` + `WaitForSingleObject` in `win32-sync-bench.exe` costs 17.5 µs for the first 14 seconds or so after the title starts and 2.3 µs afterwards (the profiler's rounds show the change in the middle of the test). The client's start is no slower for it. The time matches ShadowMount pausing kstuff 15 seconds after a launch, which is a guess.
-- **Threads do not take turns, and making them froze the console (2026-10-05).** The console starts a title's threads `SCHED_FIFO` at priority 700: a thread runs until it blocks. A title has 13 processors (`sysconf` says 16; the same work on 12 threads is done 10.4 times as fast as on one), and with 20 busy threads the seven that did not get a processor waited for one to finish: a thread that slept 2 ms woke 306 ms late. With the threads `SCHED_RR` it woke at most 3 ms late and the 20 did 23% more work in the time. A Windows program is written for time slices, and this client runs more than 13 threads while it loads and compiles shaders. `shareProcessors` in `app/runtime/wine_title.c` can make the thread that starts Wine round robin, and every thread made after it inherits that (`pthread_create` is already wrapped by the platform layer, and inheritance needs no wrap). **It is off unless `WOWPS5_SCHED=rr` asks for it:** in the one session played with it, closing the game from the system menu froze the console. The shell's `sceApplicationSuspend` of the title timed out after 60 seconds, the Shell UI's heartbeat stopped, and the console had to be restarted; closing had worked in every session before. Why a title with round-robin threads cannot be suspended is not known, so the measurement stands and the change does not ship. `SCHED_OTHER` is accepted and behaves as FIFO. `WOWPS5_CPU_PROBE=1` repeats the measurement.
-- **The drive (2026-10-05).** `WOWPS5_IO_PROBE=<file>` on one of the client's archives: 700 to 990 MiB/s read in order; a read from a random place that is not cached takes 0.3 to 0.5 ms whether it is 4 or 64 KiB. `WOWPS5_IO_STATS=1` counts the program's positioned reads: a start to the login screen makes about 3,650 of them for 660 MiB and spends 1.2 seconds in them in all, so the drive is not what a start waits for.
-- **About 250 open files, whatever the descriptor limit says (2026-10-05).** In the world the client reported "Error loading ...SavedVariables/*.lua", left saved variables as `.lua.tmp` and refused to change bindings; klog had `NtCreateFile Too many open files` and `cannot create a mapping file` with 1,140 descriptors open of a limit `getrlimit` gives as 13,952. A probe in the title (`WOWPS5_DESCRIPTOR_PROBE=1`, `descriptorProbe` in `app/runtime/wine_title.c`) found one budget of 251 more `open` calls for the whole process: files, directories and devices in every place alike, the same file counted each time. Not counted: pipe ends and socket-pair ends (8,192 each without an error), copies of an open file passed over a socket (8,192), anonymous memory objects (`shm_open(SHM_ANON)`, 2,048), and a mapping whose descriptor was closed (1,024 times open, map, close). At the login screen the client had about 40 left. Two changes, 110 left there afterwards:
-  - a section kept in memory (`PS5_SECTIONS_IN_MEMORY`, up to 1 GiB) is known by an anonymous memory object instead of a temporary file (`server/mapping.c`): it has an inode of its own, a size, and `pread`/`pwrite`; 29 of them at the login screen;
-  - the file of a mapped image is closed once its view is registered and opened again by name if anything asks (`park_unix_fd`, `get_unix_fd` in `server/fd.c`; `WINEPS5_PARK_IMAGES=0` keeps them open): about 60 modules.
-  The title logs its descriptors when their number moves by 64 (`descriptors: N open ... F files count against the 250`); `WOWPS5_DESCRIPTOR_LIST=1` adds every open file as count x size and how many more could be opened (test runs only: it takes every place for a moment). What still holds places: the client's 64 data archives and 16 indices, each handle a place of its own. Not yet confirmed in the world.
+Right-stick cursor velocity uses a 24/128 dead zone, squared response, fractional accumulation and a 100 ms elapsed-time cap. A diagnosed signed/unsigned multiplication previously converted negative movement into huge positive deltas; the signed-time fix and both negative axes are covered by the host regression. The initial left-stick/Cross mouse mapping consumed gameplay controls. An R3 mode-switch variant was built and confirmed working, then explicitly superseded by the user's final policy: right stick always controls the cursor, left stick and Cross remain XInput, and R3 has no mode-toggle role. The existing L3+R3 keyboard shortcut remains.
 
-**The PC simulation.** `tools/wine-ps5/build-host-memory-model.sh` builds a full Linux Wine under the console's memory rules, and `work/wine-inproc-host` (built by `tools/wine-ps5/build-native-server.sh --host`) adds the in-process server. The simulation found three problems before the console did (an unrounded table size, the syscall pointer sharing the shared-data host page, decommitted 4 KiB pages keeping their contents) and reproduces the console's memory-test result exactly. It cannot show what the console's kernel refuses: every row of the table above was found on the console.
+The D-pad retains its native XInput button bits and supplies full-range digital left-stick axes while both physical left-stick axes are within 24 raw units of center. Opposing D-pad directions cancel on their axis; a deflected physical stick takes priority. This avoids synthesizing keyboard/mouse movement and supports a client movement path that ignores the D-pad button flags alone.
 
-## Client build 70235 and the 4 KiB pages (October 6)
+Tap-to-click recognizes a single-finger release within 200 ms, with no more than 12 touch units of excursion per axis. Movement beyond that bound, a replaced touch ID, multiple fingers or a physical press cancels the gesture. A single-finger physical press is primary anywhere on the pad; only a two-finger press selects secondary. OSK ownership, interception and disconnect discard pending synthetic presses, while an already-started release is drained. A separate aggregated mouse source holds each synthetic press for at least 80 ms so a polling client can observe it; interruption releases it early, and queue refusal retries the outstanding edge without releasing another source's held button.
 
-The client updated from 1.60.1.70205 to 1.60.1.70235 (70 files, 3.0 GiB; `stage-game.py` and `install.py` now remember what they sent, because an update changes files without changing their size). The new build crashed twice in the world, each after minutes of play, and both were the emulation of 4 KiB pages on the console's 16 KiB ones (`dlls/ntdll/unix/virtual.c`), not the client:
+Cursor visibility uses accepted native pointer activity and a 3-second idle deadline. It starts its grace period only once the VideoOut cursor is ready, stays visible for requested or delivered mouse-button holds, and wakes for motion, clicks or wheel events. Left-stick/D-pad/gamepad-button input is not pointer activity. The cursor plane is actually disabled while hidden and re-enabled on activity; there is no second presenter.
 
-- **A read of a readable page reported as a violation** (`ACCESS_VIOLATION` reading the first page of `.rdata`). A host page is closed while any of its four pages is inaccessible, and opened again as they change, by any thread. An access refused while it was closed could find it open by the time the fault handler held the lock, because another thread had made the page beside it accessible meanwhile; nothing took that case for its own, and it went to the program as a violation no handler of it expects. Build 70235 puts the end of its code and the start of its read-only data in one host page, read by many threads while code there is still being decrypted. Now an access that the page's own protection allows, in a host page no longer closed, is run again.
-- **Undecrypted code run as it was** (`ERROR #132`, illegal instruction). A host page opened for one access to an accessible page stayed open, so the processor could walk on into the still sealed page beside it without the fault the loader decrypts on. Such host pages are now recorded and closed again at the next fault of any thread (`close_opened_host_pages`).
-- **And when it happens all the same**: a fault outside a system call with the instruction pointer in a sealed page (`virtual_is_sealed_page`) is reported as an execute fault at that address, whatever the bytes there did, which is what Windows would have reported; the loader's handler decrypts the page and runs it again (`signal_x86_64.c`).
+Host verification passed the native input-mapping regression (including right-stick separation, all D-pad directions alongside the left stick, tap cancellation/aggregation/queue pressure and idle boundaries), all 115 OSK checks, and the client-config test. These do not replace console evidence for actual devices, game interaction or raw-input consumers.
 
-State: started and played on the console after the change, not yet confirmed by a session as long as the ones that crashed. A crash of the client still leaves a frozen picture: the report it shows is not visible on the console.
+## ROM setup without Browse
 
-The client starts `BlizzardError.exe` at every start, as a watchdog. Ending the title when that program starts was tried, to turn a crash into an exit, and ended every start.
+The locally supplied `pokemmo-port/README.md` (ROM section) and `pokemmo/main_config.properties` set relative `client.roms.*` paths explicitly. The same five keys exist in this Windows client's generated configuration. See [the setup table](../README.md#roms-without-the-file-browser) for their exact mapping.
 
-`klog-record.py` connects again after three silent minutes: a console that was restarted leaves the old connection open and silent for good.
+PokeMMO starts with `C:\Games\PokeMMO` as its working directory. Thus a value such as `roms/pokemon_black.nds` refers to the installed game's own `roms/` directory. Both PS5 client stagers already copy that directory; no Linux launcher, Java replacement, ROM conversion or native file picker is involved.
+
+A host smoke invoked the actual launch-config updater on a configuration populated with all five reference ROM paths and verified that they survived unchanged alongside the 1080p settings. Initially the supplied ROM folders were empty. The later `pokemmo-input-correction-live/klog-20261011-142554.log` records six candidates and successful loads of White (`IRAO`), Emerald (`BPEE`), FireRed (`BPRE`), SoulSilver (`IPGE`) and Platinum (`CPUE`). FTP inspection confirmed the supplied files were in the game's `roms/` directory and all six `client.roms.*` properties were still empty. This establishes automatic directory discovery and those loads for revision `32920`; it does not qualify every ROM variant, archive handling or gameplay. The reference does not define `client.roms.nds4`.
+
+## Reproducible build
+
+The complete console build includes the ordered RADV mailbox/cursor overlays and requires the resulting project archive at title link time. Overlays are removed in reverse order afterward. Wine's regenerated patch reproduces its source tree, excluding only Git and local indexing metadata.
+
+The verified macOS invocation uses LLVM 23 host tools matching the installed SPIR-V translator, while selecting the existing LLVM 19 target builtins for the PS5 title:
+
+```sh
+env -u LDFLAGS -u CPPFLAGS \
+  LLVM_CONFIG=/opt/homebrew/opt/llvm/bin/llvm-config \
+  LLVM_MINGW="$HOME/llvm-mingw" \
+  CC=/opt/homebrew/opt/llvm/bin/clang \
+  CXX=/opt/homebrew/opt/llvm/bin/clang++ \
+  PS5_CLANG=/opt/homebrew/opt/llvm@19/bin/clang \
+  PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$HOME/llvm-mingw/bin:$PATH" \
+  bash tools/wine-ps5/build-console.sh --no-deploy
+```
+
+The repeated generated LLVM shim was exercised without rewriting itself. Ambient LLVM 19 include/library flags must not contaminate the LLVM 23 Mesa host-tool build. The native input/OSK test translation units still report unused-static-helper warnings; their behavioral checks pass.
+
+
+## One-process Wine constraints
+
+- The PS5 title cannot start normal Wine helper processes; the Wine server runs on a thread.
+- The title has 16 KiB host pages. `ps5_mman.c` presents Windows-compatible 4 KiB commit/protection semantics and direct-memory executable mappings.
+- Unix libraries (`win32u`, `winevulkan`, networking, TLS, XInput and audio) are linked into `eboot.bin` and selected from a generated table rather than `dlopen`.
+- The title supplies an emulated working directory because title `chdir`/relative-path behavior is restricted. PokeMMO is started with its install directory as cwd.
+- DNS is IPv4-backed. PokeMMO's observed Main Feed request succeeded, but broader network behavior is not qualified.
+- Client self-update may require a second process and is not claimed. Update the portable client on the computer and restage it.
+
+## Startup-link failure found during qualification
+
+The first locally built title faulted before `main` at a null `pthread_mutex_lock` import in libc++ static initialization. The old title link passed every SDK stub, so the symbol bound to `libkernel_web`; that module advertises names not usable by a game title on this console.
+
+The permanent fix is in `app/ps5/tools/link-title.sh`: both the LLVM link and PS5 title conversion consume `radv_link_stubs`, the explicit list produced by the pinned PS5 Vulkan link recipe. It excludes `libkernel_web` and weak fallback stubs. After relink/deploy, the title reached Wine, PokeMMO, Zink, audio, controller detection, network data and presentation.
+
+## Runtime layout
+
+```text
+/data/homebrew/PPSA99221/                         native title
+/data/pokemmo/wine/                              Wine PE modules and NLS data
+/data/pokemmo/prefix/                            registry and drive C
+/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/
+  PokeMMO.exe
+  opengl32.dll
+  libgallium_wgl.dll
+  data/
+  config/
+  log/
+  roms/
+```
+
+The prefix user is `pokemmo`. Release sanitization removes credentials, temporary contents, owner labels and host-only paths before packaging.
+
+## Reference boundary
+
+The PortMaster handheld project was used for portable layout, OpenGL requirements and the explicit ROM-path method. Its launcher, patches, themes and assets are not part of the PS5 implementation; its full handheld configuration must not replace the Windows client's settings.
+
+The native cursor's 12×19 arrow and GPU-plane approach came from the user-supplied local `ps5-proton/ps5-wow` tree (`ps5/title/cursor-arrow.h`, `ps5/probes/psmkit-wine/runtime-input.c`, and the RADV cursor patch). Those local cursor sources did not declare a separate licence for the PS5 addition, so this provenance does not establish an MIT grant. The maintainer has explicitly confirmed permission for this repository to redistribute the copied arrow artwork; its original artist and open-content licence remain undocumented. That artwork is outside the root MIT licence, and the confirmation does not supply a licence for separately copied implementation code. See the [artwork notice](../ARTWORK.md).

@@ -4,9 +4,9 @@
   tools/wine-ps5/stage-console.py [--all | --core] [--tree work/wine-memsim-host] [--system32] [program.exe ...]
 
 Uploads over the console's FTP server, only what has changed, to
-/data/wowps5/wine (the layout Wine's loader is given on the console): the PE
+/data/pokemmo/wine (the layout Wine's loader is given on the console): the PE
 DLLs built in a host tree with the console's syscall thunk address, stripped,
-and the NLS tables. Programs go to /data/wowps5/test. Nothing is deleted.
+and the NLS tables. Programs go to /data/pokemmo/test. Nothing is deleted.
 
 What has changed: a file is sent when its size on the console differs, or when
 its contents differ from what this script last sent there (hashes kept in
@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / 'vendor/PS5_Vulkan/tools'))
 import ps5_console  # noqa: E402
 
 DLLS = ['ntdll', 'kernel32', 'kernelbase']
+RUNTIME = '/data/pokemmo'
 
 
 def ensure(ftp, directory):
@@ -64,16 +65,17 @@ def main():
     parser.add_argument('--all', action='store_true', help='every PE module the tree built (DLLs, drivers, programs)')
     parser.add_argument('--module', action='append', default=[], help='stage one named PE DLL (repeatable)')
     parser.add_argument('--core', action='store_true', help='only ntdll, kernel32 and kernelbase from the tree')
-    parser.add_argument('--prefix', help='a prefix made on the host by the same Wine: its registry and drive_c skeleton go to /data/wowps5/prefix')
+    parser.add_argument('--prefix', help=f'a prefix made on the host by the same Wine: its registry and drive_c skeleton go to {RUNTIME}/prefix')
     parser.add_argument('--force', action='store_true', help='send every file, whatever was sent before')
     parser.add_argument('--ca-bundle', help='stage a PEM trust bundle for console certificate validation')
     parser.add_argument('--system32', action='store_true',
                         help="also put each module in the prefix's system folder, replacing the copy there: a program "
                              'that reads a system DLL from disk (a protected game restoring ntdll) must find the build that is loaded')
-    parser.add_argument('--keep', default='d3d12.dll,d3d12core.dll,dxgi.dll',
-                        help='system folder files --system32 leaves alone (the DirectX translation libraries put there by hand)')
+    parser.add_argument('--keep', default='',
+                        help='comma-separated system folder file names --system32 leaves alone')
     parser.add_argument('programs', nargs='*')
     args = parser.parse_args()
+    keep = {name for name in args.keep.split(',') if name}
     tree = Path(args.tree)
     settings = ps5_console.load_settings()
     ftp = FTP()
@@ -86,7 +88,7 @@ def main():
         bundle = Path(args.ca_bundle).read_bytes()
         if b'-----BEGIN CERTIFICATE-----' not in bundle:
             raise ValueError('CA bundle must contain PEM certificates')
-        files.append((bundle, '/data/wowps5/ca-certificates.crt'))
+        files.append((bundle, f'{RUNTIME}/ca-certificates.crt'))
     # Modules are sent only when asked for. Sending the core DLLs with every test
     # program, from whichever tree was the default, left the console with ntdll
     # from one build in Wine's folder and from another in the system folder.
@@ -104,14 +106,14 @@ def main():
                                   capture_output=True)
             data = stripped.read_bytes() if done.returncode == 0 else source.read_bytes()   # .tlb and the like are not PE
             digest = hashlib.sha256(source.read_bytes()).hexdigest()
-            files.append((data, f'/data/wowps5/wine/lib/wine/x86_64-windows/{source.name}', digest))
-            if args.system32 and source.name not in args.keep.split(','):
-                files.append((data, f'/data/wowps5/prefix/dosdevices/c:/windows/system32/{source.name}', digest))
+            files.append((data, f'{RUNTIME}/wine/lib/wine/x86_64-windows/{source.name}', digest))
+            if args.system32 and source.name not in keep:
+                files.append((data, f'{RUNTIME}/prefix/dosdevices/c:/windows/system32/{source.name}', digest))
     for table in sorted((tree / 'nls').glob('*.nls')):
-        files.append((table.read_bytes(), f'/data/wowps5/wine/share/wine/nls/{table.name}'))
+        files.append((table.read_bytes(), f'{RUNTIME}/wine/share/wine/nls/{table.name}'))
     programs = set()   # always sent: a rebuilt test program is often the size it was
     for program in args.programs:
-        files.append((Path(program).read_bytes(), f'/data/wowps5/test/{Path(program).name}'))
+        files.append((Path(program).read_bytes(), f'{RUNTIME}/test/{Path(program).name}'))
         programs.add(files[-1][1])
     directories = set()
     if args.prefix:
@@ -125,14 +127,14 @@ def main():
         prefix = Path(args.prefix)
         binaries = {'.dll', '.exe', '.sys', '.drv', '.ocx', '.cpl', '.acm', '.ax', '.ds', '.com'}
         for name in ['system.reg', 'user.reg', 'userdef.reg']:
-            files.append(((prefix / name).read_bytes(), f'/data/wowps5/prefix/{name}'))
+            files.append(((prefix / name).read_bytes(), f'{RUNTIME}/prefix/{name}'))
         drive = prefix / 'drive_c'
         with tempfile.TemporaryDirectory() as scratch:
             for path in sorted(drive.rglob('*')):
                 relative = path.relative_to(drive)
                 if relative.parts[:2] == ('windows', 'syswow64'):
                     continue                 # 32-bit modules: this Wine is 64-bit only
-                target = '/data/wowps5/prefix/dosdevices/c:/' + relative.as_posix()
+                target = f'{RUNTIME}/prefix/dosdevices/c:/{relative.as_posix()}'
                 if path.is_dir():            # a link to a host directory becomes a plain directory
                     directories.add(target)
                 elif path.is_file() and not path.is_symlink():

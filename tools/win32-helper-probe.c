@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
                 CloseHandle(thread);
             }
             result = GetRunningObjectTable(0, &table);
-            if(SUCCEEDED(result) && SUCCEEDED(result = CreateItemMoniker(L"!", L"WoWPS5Probe", &moniker))) {
+            if(SUCCEEDED(result) && SUCCEEDED(result = CreateItemMoniker(L"!", L"PokeMMOPS5Probe", &moniker))) {
                 DWORD cookie = 0;
                 result = IRunningObjectTable_Register(table, 0, (IUnknown*)link, moniker, &cookie);
                 if(SUCCEEDED(result)) IRunningObjectTable_Revoke(table, cookie);

@@ -12,7 +12,7 @@ def parse(text):
     identity = None
     compute = False
     for line in text.splitlines():
-        prefix = '[WoWPS5 Probe] '
+        prefix = '[PokeMMO PS5] '
         if not line.startswith(prefix):
             continue
         line = line[len(prefix):]
@@ -29,7 +29,7 @@ def parse(text):
         elif line.startswith('probe RGBA16F compute readback PASS; mismatches=0'):
             compute = True
     if not identity:
-        raise ValueError('No WoWPS5 probe identity in the log')
+        raise ValueError('No PokeMMO PS5 probe identity in the log')
     return {
         'schema': 1, 'build': identity, 'vulkanVersion': version,
         'rgba16fComputePassed': compute,
@@ -38,7 +38,7 @@ def parse(text):
         'vkd3dExtensionPresence': {
             name: name in extensions for name in ['VK_EXT_robustness2', 'VK_KHR_push_descriptor']
         },
-        'scope': 'Native driver queries and RGBA16F compute only; feature list is a subset. Windows/D3D12/WoW runtime compatibility untested.',
+        'scope': 'Native driver queries and RGBA16F compute only; feature list is a subset. Windows/D3D12/PokeMMO runtime compatibility untested.',
     }
 
 def main():

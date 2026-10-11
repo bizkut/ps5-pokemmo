@@ -28,8 +28,8 @@
  * mixed range does the right thing for each page, and a unit's direct memory
  * goes back when its last committed page does.
  */
-#ifndef WOWPS5_PS5_MMAN_H
-#define WOWPS5_PS5_MMAN_H
+#ifndef POKEMMOPS5_PS5_MMAN_H
+#define POKEMMOPS5_PS5_MMAN_H
 
 #include <stddef.h>
 #include <stdint.h>

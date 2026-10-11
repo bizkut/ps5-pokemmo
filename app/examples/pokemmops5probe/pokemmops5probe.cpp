@@ -1,5 +1,5 @@
 /*
- * WoWPS5 Probe - its program, made from the PS5 Vulkan Template starter.
+ * PokeMMO PS5 - its diagnostic program, made from the PS5 Vulkan Template starter.
  *
  * A textured, lit glTF model from the title folder, drawn with dynamic
  * rendering into the swapchain image and the base class's depth buffer. The
@@ -16,9 +16,9 @@
 #include "vulkanexamplebase.h"
 #include "VulkanglTFModel.h"
 #include "probe.h"
-extern "C" bool wowps5PeProbe(const char*, const char*, const char*);
-extern "C" bool wowps5WineContractProbe(const char*);
-extern "C" bool wowps5MmanConsoleTest(const char*);
+extern "C" bool pokemmops5PeProbe(const char*, const char*, const char*);
+extern "C" bool pokemmops5WineContractProbe(const char*);
+extern "C" bool pokemmops5MmanConsoleTest(const char*);
 
 class VulkanExample : public VulkanExampleBase
 {
@@ -52,7 +52,7 @@ public:
 
 	VulkanExample() : VulkanExampleBase()
 	{
-		title = "WoWPS5 Probe";
+		title = "PokeMMO PS5";
 		resetCamera();
 		// Vulkan 1.3's dynamic rendering: no render pass or framebuffer objects.
 		// The base class's helpers (beginDynamicRendering) transition the depth
@@ -141,8 +141,8 @@ public:
 		std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 		VkPipelineDynamicStateCreateInfo dynamicState = vks::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
 		std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {
-			loadShader(getShadersPath() + "wowps5probe/model.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
-			loadShader(getShadersPath() + "wowps5probe/model.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
+			loadShader(getShadersPath() + "pokemmops5probe/model.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+			loadShader(getShadersPath() + "pokemmops5probe/model.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
 		};
 		// With dynamic rendering the pipeline names its attachments' formats instead of a render pass
 		VkPipelineRenderingCreateInfo renderingCreateInfo{
@@ -198,16 +198,16 @@ public:
 	{
 		VulkanExampleBase::prepare();
         // A measurement, not a gate: its failures are findings, recorded in the report.
-        wowps5WineContractProbe(PS5_APP_ROOT "/wine-contract.txt");
-        wowps5MmanConsoleTest(PS5_APP_ROOT "/wine-mman.txt");
-        if (!wowps5PeProbe(PS5_APP_ROOT "/pe-smoke.exe", "/data/wowps5/client", PS5_APP_ROOT "/pe-result.json"))
+        pokemmops5WineContractProbe(PS5_APP_ROOT "/wine-contract.txt");
+        pokemmops5MmanConsoleTest(PS5_APP_ROOT "/wine-mman.txt");
+        if (!pokemmops5PeProbe(PS5_APP_ROOT "/pe-smoke.exe", "/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO", PS5_APP_ROOT "/pe-result.json"))
             throw std::runtime_error("Windows x64 PE smoke failed");
-        VkPipelineShaderStageCreateInfo compute = loadShader(getShadersPath() + "wowps5probe/storage.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+        VkPipelineShaderStageCreateInfo compute = loadShader(getShadersPath() + "pokemmops5probe/storage.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
         probe = runProbe(vulkanDevice, queue, compute.module, enabledFeatures.shaderStorageImageExtendedFormats);
         // loadShader registers its module with the base class for destruction.
         FILE* report = fopen(PS5_APP_ROOT "/probe-result.json", "w");
         if (report) {
-            fprintf(report, "{\n  \"schema\": 1, \"build\": \"wowps5-rgba16f-v2\",\n  \"apiVersion\": %u, \"storageFormat\": %s, \"computeQueue\": %s,\n  \"extendedFormats\": %s, \"computePassed\": %s, \"mismatches\": %u, \"vkResult\": %d,\n  \"provesWoWCompatibility\": false\n}\n",
+            fprintf(report, "{\n  \"schema\": 1, \"build\": \"pokemmops5-rgba16f-v2\",\n  \"apiVersion\": %u, \"storageFormat\": %s, \"computeQueue\": %s,\n  \"extendedFormats\": %s, \"computePassed\": %s, \"mismatches\": %u, \"vkResult\": %d,\n  \"provesPokeMMOCompatibility\": false\n}\n",
                 probe.apiVersion, probe.storageFormat ? "true" : "false", probe.computeQueue ? "true" : "false",
                 probe.extendedFormats ? "true" : "false", probe.computePassed ? "true" : "false", probe.mismatches, probe.result);
             fclose(report);
@@ -263,7 +263,7 @@ public:
             overlay->text("RGBA16F compute: %s", probe.computePassed ? "PASS" : "FAIL / unavailable");
             overlay->text("Mismatches: %u", probe.mismatches);
             overlay->text("Windows x64 CPU / ABI smoke: PASS");
-            overlay->text("WoW startup: Windows runtime required");
+            overlay->text("PokeMMO startup: Windows runtime required");
         }
         if (overlay->header("Settings")) {
 			overlay->checkBox("Spin the model", &spinModel);

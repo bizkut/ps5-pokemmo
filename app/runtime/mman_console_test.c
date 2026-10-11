@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #ifndef __PROSPERO__
-bool wowps5MmanConsoleTest(const char* reportPath) { (void)reportPath; return true; }
+bool pokemmops5MmanConsoleTest(const char* reportPath) { (void)reportPath; return true; }
 #else
 #include <errno.h>
 #include <fcntl.h>
@@ -22,7 +22,7 @@ static unsigned failures;
 static void say(const char* format, ...) {
     char line[600]; va_list arguments;
     va_start(arguments, format); vsnprintf(line, sizeof(line), format, arguments); va_end(arguments);
-    fprintf(stderr, "[WoWPS5 Wine] %s\n", line); fflush(stderr);
+    fprintf(stderr, "[PokeMMO PS5 Wine] %s\n", line); fflush(stderr);
     if(report) { fprintf(report, "%s\n", line); fflush(report); }
 }
 static bool verdict(bool passed, const char* what) {
@@ -41,7 +41,7 @@ static uint64_t directFree(void) {
 #define ANON (MAP_PRIVATE|MAP_ANON)
 #define RW (PROT_READ|PROT_WRITE)
 
-bool wowps5MmanConsoleTest(const char* reportPath) {
+bool pokemmops5MmanConsoleTest(const char* reportPath) {
     report = fopen(reportPath, "w"); failures = 0;
     ps5w_init(NULL);
     struct ps5w_stats stats;
@@ -95,15 +95,15 @@ bool wowps5MmanConsoleTest(const char* reportPath) {
     say("mman code read_execute=%d read_write_execute=%d", answer, rewritten);
     verdict(answer == 42 && rewritten == 43, "anonymous memory becomes executable through mprotect, as PE sections need");
 
-    // WowB.exe's whole image at its preferred base, as one view
-    uint8_t* const image = (uint8_t*)0x140000000ull; const size_t imageBytes = 0x8590000;
+    // PokeMMO.exe's whole image at its preferred base, as one view
+    uint8_t* const image = (uint8_t*)0x140000000ull; const size_t imageBytes = 0x06bfa000;
     t = milliseconds();
     ok = ps5w_mmap(image, imageBytes, RW, ANON|MAP_FIXED|MAP_EXCL, -1, 0) == image;
     const double mapped = milliseconds()-t;
     if(ok) { image[0] = 'M'; image[imageBytes-1] = 'Z'; ok = !ps5w_mprotect(image, 0x4000, PROT_READ) && !ps5w_mprotect(image+0x4000, 0x100000, PROT_READ|PROT_EXEC); }
     ps5w_live(&stats);
     say("mman image bytes=0x%zx ms=%.2f allocations=%llu errno=%d", imageBytes, mapped, (unsigned long long)stats.allocations, ok ? 0 : errno);
-    verdict(ok, "a 134 MiB view at 0x140000000, with per-section protections");
+    verdict(ok, "PokeMMO.exe's 0x06bfa000-byte image at its preferred base 0x140000000, with per-section protections");
 
     // a large commit, the middle of it released, then taken again
     uint8_t* const heap = area + 0x10000000; const size_t heapBytes = (size_t)1<<30, hole = 256u<<20;
@@ -133,7 +133,7 @@ bool wowps5MmanConsoleTest(const char* reportPath) {
     verdict(made == 4096, "4096 separate direct mappings in one process");
 
     // a file view placed inside the reserved area, and anonymous memory over part of it
-    const int file = open("/data/wowps5/client/WowB.exe", O_RDONLY);
+    const int file = open("/data/pokemmo/prefix/dosdevices/c:/Games/PokeMMO/PokeMMO.exe", O_RDONLY);
     uint8_t* const view = area + 0xc0000000ull;
     errno = 0;
     const bool refused = file >= 0 && ps5w_mmap(view, 0x10000, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED, file, 0) == MAP_FAILED && errno == ENODEV;

@@ -15,7 +15,7 @@ What the patch changes, each for a measured reason (docs/technical-notes.md):
 - **Memory** (`virtual.c`): the layer above, 16 KiB host pages, nothing at or above 1 TiB, reserved areas clear of the title; decommitted 4 KiB pages that share a host page are cleared.
 - **Syscall dispatcher pointer** (`include/wine/asm.h`, `signal_x86_64.c`): moved from 0x7ffe1000 to 0x7ffe4000, out of the shared-data host page. PE DLLs must be built with `-DWINE_PS5` or `-DWINE_PS5_MEMORY_MODEL`.
 - **Thread registers** (`signal_x86_64.c`, `system.c`): GS base through `sysarch`; no `wrfsbase`/`wrgsbase` (they fault although CPUID lists them); the signal context's XSAVE image is 32 bytes after the SDK header's `mc_fpstate`.
-- **Paths** (`loader.c`): a fixed installation root, `WINEPS5ROOT` or `/data/wowps5/wine`.
+- **Paths** (`loader.c`): a fixed installation root, `WINEPS5ROOT` or `/data/pokemmo/wine`.
 - **Output** (`debug.c`, `env.c`): diagnostics and the program's standard output go to klog; descriptor 2 is the null device in a title and cannot be replaced.
 
 - **Unix libraries** (`virtual.c`): looked up in a table the title links, in place of `dlopen`.
@@ -39,7 +39,7 @@ Build and run on the console:
 ```sh
 tools/wine-ps5/build-console.sh                      # patched Wine objects -> title -> deploy
 tools/wine-ps5/stage-console.py --all --tree work/wine-memsim-host --prefix work/console-prefix build/windows/win32-runtime-test.exe
-tools/wine-ps5/run-console.py /data/wowps5/test/win32-runtime-test.exe
+tools/wine-ps5/run-console.py /data/pokemmo/test/win32-runtime-test.exe
 ```
 
 After changing anything under `vendor/wine`, run `tools/wine-ps5/refresh-patch.sh`: it rewrites the patch and checks that the patch reproduces the tree.

@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     SOCKET client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     char reply[16] = "";
     ok = thread && client != INVALID_SOCKET && !connect(client, (struct sockaddr*)&address, sizeof(address)) &&
-         send(client, "wowps5", 6, 0) == 6 && recv(client, reply, sizeof(reply), 0) == 6 && !memcmp(reply, "wowps5", 6);
+         send(client, "pokemmops5", 10, 0) == 10 && recv(client, reply, sizeof(reply), 0) == 10 && !memcmp(reply, "pokemmops5", 10);
     check(ok, "connect, send and receive across the loopback");
     u_long nonblocking = 1; fd_set readable; struct timeval none = { 0, 0 };
     ok = !ioctlsocket(client, FIONBIO, &nonblocking) && recv(client, reply, sizeof(reply), 0) == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK;
@@ -74,6 +74,6 @@ int main(int argc, char** argv) {
     } else check(0, "an outbound TCP connection gets an HTTP reply");
 
     WSACleanup();
-    printf(failures ? "WoWPS5 Win32 net test FAIL\n" : "WoWPS5 Win32 net test PASS\n");
+    printf("PokeMMO PS5 Win32 net test %s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     return failures;
 }

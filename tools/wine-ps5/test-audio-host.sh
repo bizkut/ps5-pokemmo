@@ -20,7 +20,7 @@
 #   block    the port takes one grain per grain of time, as the console's does
 #   noblock  the port returns at once: the driver must still not outrun the clock
 #   refuse   the port fails every grain: the driver must keep time without it
-#   off      WOWPS5_AUDIO=0: Windows must be told there is no audio device
+#   off      POKEMMOPS5_AUDIO=0: Windows must be told there is no audio device
 set -uo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 out=${1:-$root/work/audio-partner/host}
@@ -62,10 +62,10 @@ run() {  # <mode> <expected exit status: 0, or "nonzero">
     local mode=$1 expected=$2 status verdict
     rm -f "$out/capture-$mode.raw"
     if [[ $mode == off ]]; then
-        WOWPS5_AUDIO=0 WOWPS5_AUDIO_CAPTURE="$out/capture-$mode.raw" \
+        POKEMMOPS5_AUDIO=0 POKEMMOPS5_AUDIO_CAPTURE="$out/capture-$mode.raw" \
             timeout 120 "$wine" "$out/win32-audio-test.exe" > "$out/logs/$mode.out" 2> "$out/logs/$mode.err"
     else
-        WOWPS5_AUDIO_HOST_PORT="$mode" WOWPS5_AUDIO_CAPTURE="$out/capture-$mode.raw" \
+        POKEMMOPS5_AUDIO_HOST_PORT="$mode" POKEMMOPS5_AUDIO_CAPTURE="$out/capture-$mode.raw" \
             timeout 120 "$wine" "$out/win32-audio-test.exe" > "$out/logs/$mode.out" 2> "$out/logs/$mode.err"
     fi
     status=$?

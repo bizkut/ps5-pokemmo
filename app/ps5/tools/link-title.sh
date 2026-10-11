@@ -23,16 +23,26 @@ shift 3
 objects=("$@")
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
-# RADV with this project's patches (tools/wine-ps5/build-radv.sh) when it has been built, PS5_Vulkan's otherwise
+# The native cursor uses exports added by this project's RADV patch stack.
+# RADV_ARCHIVE remains an explicit development override; the default never
+# falls back to PS5_Vulkan's unpatched release archive.
 project_radv="$(dirname "$root")/build/radv/lib/libvulkan_radeon.ps5.a"
-[[ -f $project_radv ]] || project_radv="$vulkan/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a"
 archive=${RADV_ARCHIVE:-$project_radv}
+if [[ ! -f $archive ]]; then
+    if [[ -n ${RADV_ARCHIVE:-} ]]; then
+        echo "link-title.sh: RADV_ARCHIVE is not a file: $archive" >&2
+    else
+        echo "link-title.sh: missing patched RADV archive: $project_radv" >&2
+        echo "run: bash $(dirname "$root")/tools/wine-ps5/build-radv.sh" >&2
+    fi
+    exit 2
+fi
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang || true)}
 tool="$vulkan/build/host/ps5-native-tool"
 native="$vulkan/tooling/native"
 param="$ps5/sce_sys/param.json"
 
-for file in "$archive" "$tool" "$param" "$sdk/bin/prospero-lld" "$vulkan/tools/radv-link.sh" \
+for file in "$tool" "$param" "$sdk/bin/prospero-lld" "$vulkan/tools/radv-link.sh" \
         "$vulkan/runtime/libc.prx" "$work/samples.txt"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; exit 2; }
 done
@@ -79,7 +89,7 @@ fi
     "$work/link/stubs/libSceAgc.so" "$work/link/stubs/libSceAgcDriver.so" \
     "$work/link/stubs/libSceMouse.so" \
     "${radv_link_inputs[@]}" \
-    --as-needed "$sdk"/target/lib/*.so
+    --as-needed "${radv_link_stubs[@]}"
 # A title whose localeconv is still the console's reads every glTF fraction as 0
 # (black materials, models scaled to nothing): refuse it here, not on the console
 if $platform_has_localeconv &&
@@ -87,8 +97,10 @@ if $platform_has_localeconv &&
     echo "link-title.sh: localeconv is not bound to the platform layer's ps5_localeconv" >&2
     exit 1
 fi
+conversion_stubs=()
+for stub in "${radv_link_stubs[@]}"; do conversion_stubs+=(--stub "$stub"); done
 "$tool" link --in "$work/link/llvm-pie.elf" --out "$work/eboot.elf.new" \
-    --stub-dir "$sdk/target/lib" --stub "$work/link/stubs/libSceAgc.so" \
+    "${conversion_stubs[@]}" --stub "$work/link/stubs/libSceAgc.so" \
     --stub "$work/link/stubs/libSceAgcDriver.so" --stub "$work/link/stubs/libSceMouse.so" --module-sdk 0x02000009 \
     --companion-sdk 0x08050001 --file-name eboot.elf
 

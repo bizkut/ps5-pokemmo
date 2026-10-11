@@ -15,5 +15,5 @@ trap 'git -C "$wine" worktree remove --force "$check/tree" 2>/dev/null; rm -rf "
 git -C "$wine" worktree add --detach "$check/tree" HEAD > /dev/null 2>&1
 git -C "$check/tree" apply "$patch"
 bash "$root/tools/wine-ps5/sync-memory-layer.sh" "$check/tree"
-if diff -rq -x .git "$check/tree" "$wine" | grep .; then echo "the patch does not reproduce vendor/wine" >&2; exit 1; fi
+if ! diff -rq -x .git -x .tokensave "$check/tree" "$wine"; then echo "the patch does not reproduce vendor/wine" >&2; exit 1; fi
 echo "$patch: $(grep -c '^diff --git' "$patch") files, reproduces vendor/wine"
